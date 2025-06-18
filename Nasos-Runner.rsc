@@ -15,11 +15,14 @@
 :global MsgPumpStopped
 :global MsgPumpAutoStop
 :global MsgPumpManualStop
+:global MsgPumpStoppedByCmd
+:global MsgPumpStoppedTimeReduced
 :global MsgTimeWorked
 :global MsgTimeWillWork
 :global MsgTimeTotal
 :global MsgTimeMin
 :global MsgTimeSec
+:global MsgTimeReduced
 :global MsgMenuHeader
 :global MsgMenuStop
 :global MsgMenuStatus
@@ -43,6 +46,9 @@
 :global MsgTimeExpectedTotal
 :global MsgTimeWorkedHeader
 :global MsgPumpStartedFor
+:global MsgStopCmdTemplate
+:global MsgPumpAlreadyStopped
+:global MsgTimeSinceStop
 
 :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
     :log warning "Насос - Запуск Nasos-Init"
@@ -69,6 +75,12 @@
         :if ([:typeof $NewDuration] = "num") do={
             :local poeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
             :if ($NewDuration = 0) do={
+                # ПРОВЕРКА ТЕКУЩЕГО СТАТУСА POE ПЕРЕД ОТКЛЮЧЕНИЕМ
+                :if ($poeStatus = "forced-on") do={
+                    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ФИЗИЧЕСКОЕ ОТКЛЮЧЕНИЕ POE
+                    /interface ethernet poe set $PoeMainInterface poe-out=off
+                    :log warning "Насос - POE ФИЗИЧЕСКИ ОТКЛЮЧЕН"
+                
                 :local workTimeMsg ""
                 :if ([:len $PoeStartTime] > 0) do={
                     :local currentTime [/system clock get time]
@@ -92,12 +104,12 @@
                     :local workSecondsRem ($workSeconds - ($workMinutes * 60))
                     :set workTimeMsg ($MsgTimeWorkedTemplate . [:tostr $workMinutes] . $MsgTimeMin . [:tostr $workSecondsRem] . $MsgTimeSec)
                 }
-                :local telegramMsg ($MsgSysStarted . $MsgNewLine . $MsgStatusCurrent . $MsgNewLine . $MsgPumpManualStop . $workTimeMsg)
-                $sendTelegram $BotToken $ChatId $telegramMsg
                 :set LastStopTime [/system clock get time]
                 :local logMsg "Насос - НАСОС ОСТАНОВЛЕН ПО КОМАНДЕ"
                 :set logMsg ($logMsg . $workTimeMsg)
                 :log warning $logMsg
+                
+                # Telegram сообщение с временем работы
                 :local telegramWorkMsg ""
                 :if ([:len $PoeStartTime] > 0) do={
                     :local currentTime [/system clock get time]
@@ -135,8 +147,39 @@
                     /system scheduler remove $timer
                     :log warning ("Насос - Удален старый таймер: " . $timerName)
                 }
+                
+                # Очистка переменных состояния
                 :set PoeStartTime ""
                 :set NewDuration ""
+                
+                } else={
+                    # НАСОС УЖЕ ОТКЛЮЧЕН - показываем время с момента отключения
+                    :local timeSinceStopMsg ""
+                    :if ([:len $LastStopTime] > 0) do={
+                        :local currentTime [/system clock get time]
+                        :local stopHours [:pick $LastStopTime 0 2]
+                        :local stopMinutes [:pick $LastStopTime 3 5]
+                        :local stopSecs [:pick $LastStopTime 6 8]
+                        :local stopSeconds ($stopHours * 3600 + $stopMinutes * 60 + $stopSecs)
+                        :local currentHours [:pick $currentTime 0 2]
+                        :local currentMins [:pick $currentTime 3 5]
+                        :local currentSecs [:pick $currentTime 6 8]
+                        :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
+                        :local timeSinceStop ($currentSeconds - $stopSeconds)
+                        :if ($timeSinceStop < 0) do={
+                            :set timeSinceStop ($timeSinceStop + 86400)
+                        }
+                        :local stopMinutes ($timeSinceStop / 60)
+                        :local stopSecondsRem ($timeSinceStop - ($stopMinutes * 60))
+                        :set timeSinceStopMsg ($MsgTimeSinceStop . " " . [:tostr $stopMinutes] . $MsgTimeMin . [:tostr $stopSecondsRem] . $MsgTimeSec)
+                    }
+                    :log warning ("Насос - НАСОС УЖЕ ОТКЛЮЧЕН" . $timeSinceStopMsg)
+                    :local telegramMsg ($MsgHeader . $MsgNewLine . $MsgStatusHeader . $MsgNewLine . $MsgPumpAlreadyStopped . $timeSinceStopMsg)
+                    $sendTelegram $BotToken $ChatId $telegramMsg
+                    # Очистка переменной команды
+                    :set NewDuration ""
+                }
+                
             } else={
                 :if ($NewDuration < 0) do={
                     :if ([:len $PoeActiveTimer] > 0) do={

@@ -44,6 +44,10 @@
 :global MsgPumpStoppedByCmd "%F0%9F%94%B4%20%D0%9E%D0%A1%D0%A2%D0%90%D0%9D%D0%9E%D0%92%D0%9B%D0%95%D0%9D%20%D0%9F%D0%9E%20%D0%9A%D0%9E%D0%9C%D0%90%D0%9D%D0%94%D0%95"
 # 🔴 ОСТАНОВЛЕН - время уменьшено
 :global MsgPumpStoppedTimeReduced "%F0%9F%94%B4%20%D0%9E%D0%A1%D0%A2%D0%90%D0%9D%D0%9E%D0%92%D0%9B%D0%95%D0%9D%20-%20%D0%B2%D1%80%D0%B5%D0%BC%D1%8F%20%D1%83%D0%BC%D0%B5%D0%BD%D1%8C%D1%88%D0%B5%D0%BD%D0%BE"
+# 🔴 НАСОС УЖЕ ОТКЛЮЧЕН
+:global MsgPumpAlreadyStopped "%F0%9F%94%B4%20%D0%9D%D0%90%D0%A1%D0%9E%D0%A1%20%D0%A3%D0%96%D0%95%20%D0%9E%D0%A2%D0%9A%D0%9B%D0%AE%D0%A7%D0%95%D0%9D"
+# ⏱️ Отключен
+:global MsgTimeSinceStop "%E2%8F%B1%EF%B8%8F%20%D0%9E%D1%82%D0%BA%D0%BB%D1%8E%D1%87%D0%B5%D0%BD"
 
 # Статусы запуска
 # 🟢 НАСОС ЗАПУЩЕН на
@@ -149,7 +153,7 @@
 
 # ===== 7. ШАБЛОНЫ КОМАНД =====
 # Шаблон команды остановки
-:global MsgStopCmdTemplate ":local sendTelegram do={\r\
+:global MsgStopCmdTemplate ":global PoeMainInterface; /interface ethernet poe set \$PoeMainInterface poe-out=off; :local sendTelegram do={\r\
     :global BotToken;\r\
     :global ChatId;\r\
     \$sendTelegram \$BotToken \$ChatId (\$MsgSysStarted . \$MsgNewLine . \$MsgStatusCurrent . \$MsgNewLine . \$MsgPumpAutoStop . \$telegramWorkMsg)\r\
