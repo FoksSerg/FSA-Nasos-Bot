@@ -564,15 +564,9 @@ add name="Nasos-WatchDog" source=[/file get Nasos-WatchDog.rsc contents] policy=
 ## 📞 Поддержка
 
 ### 📧 Контакты:
-- **Telegram:** [@support_nasos](https://t.me/support_nasos)
-- **Email:** nasos.support@example.com
-- **GitHub Issues:** [Issues](https://github.com/user/NasosRunner/issues)
-
-### 📚 Дополнительные ресурсы:
-- 📖 **Wiki:** [Полная документация](https://github.com/user/NasosRunner/wiki)
-- 🎥 **Видео-инструкции:** [YouTube канал](https://youtube.com/NasosRunner)
-- 💬 **Сообщество:** [Telegram чат](https://t.me/nasos_runner_chat)
-- 🐛 **Багрепорты:** [GitHub Issues](https://github.com/user/NasosRunner/issues/new)
+- **Телефон:** +7 927-351-7777
+- **Email:** foks_serg@mail.ru
+- **GitHub Issues:** [Issues](https://github.com/FoksSerg/FSA-Nasos-Bot/issues)
 
 ### ❓ FAQ:
 
