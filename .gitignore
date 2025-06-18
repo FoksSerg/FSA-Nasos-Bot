@@ -1,0 +1,66 @@
+# RouterOS Script files backup
+*.backup
+*.rsc.backup
+
+# Резервные копии проекта
+Rezerv/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Log files
+*.log
+
+# Python cache (для UrlEncoder)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Конфиденциальные данные
+*token*
+*secret*
+config.local.*
+
+# Тестовые файлы (можно исключить при желании)
+# Send-Telegram.rsc
+# Test-Telegram-Fetch.rsc Nasos-Init.rsc
+*.rsc

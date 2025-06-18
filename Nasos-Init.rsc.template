@@ -1,0 +1,49 @@
+# Основные переменные
+:global NasosInitStatus false
+:global PoeMainInterface "E5-Nasos"
+# Рабочий
+# :global BotToken "YOUR_BOT_TOKEN"
+# Тестовый
+:global BotToken "YOUR_BOT_TOKEN"
+:global ChatId "YOUR_CHAT_ID"
+:global PoeActiveTimer
+:global PoeStartTime
+:global NewDuration
+:global TelegramHeartbeat
+:global LastUpdateId
+:global LastStopTime
+:global MsgSysPoeDisabled
+
+# Инициализация сообщений
+:log warning "Насос - Запуск Nasos-Messages"
+/system script run Nasos-Messages
+
+# Проверка и отключение POE при старте
+:if ([:len [/interface ethernet find where name=$PoeMainInterface]] > 0) do={
+    :log warning "Насос - Отключение POE после перезагрузки"
+    /interface ethernet poe power-cycle $PoeMainInterface
+    :delay 2s
+    /interface ethernet poe set $PoeMainInterface poe-out=off
+    :log warning "Насос - POE отключен"
+    /tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $MsgSysPoeDisabled) keep-result=no
+}
+
+# Очистка старых таймеров
+:local cleanedCount 0
+:foreach timer in=[/system scheduler find where name~"poe-timer"] do={
+    :local timerName [/system scheduler get $timer name]
+    /system scheduler remove $timer
+    :set cleanedCount ($cleanedCount + 1)
+    :log warning ("Насос - Удален старый таймер: " . $timerName)
+}
+:if ([:len [/system scheduler find name="nasos-poe-timer"]] > 0) do={
+    /system scheduler remove [find name="nasos-poe-timer"]
+    :set cleanedCount ($cleanedCount + 1)
+    :log warning "Насос - Удален таймер: nasos-poe-timer"
+}
+:set PoeActiveTimer ""
+:if ($cleanedCount > 0) do={
+    :log warning ("Насос - Очистка таймеров завершена. Удалено: " . $cleanedCount)}
+:set NasosInitStatus true
+
+:log info "Насос - Глобальные переменные инициализированы" 
