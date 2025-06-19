@@ -153,19 +153,21 @@
 
 # ===== 7. ШАБЛОНЫ КОМАНД =====
 # Шаблон команды остановки
-:global MsgStopCmdTemplate ":global PoeMainInterface; /interface ethernet poe set \$PoeMainInterface poe-out=off; :local sendTelegram do={\r\
-    :global BotToken;\r\
-    :global ChatId;\r\
-    \$sendTelegram \$BotToken \$ChatId (\$MsgSysStarted . \$MsgNewLine . \$MsgStatusCurrent . \$MsgNewLine . \$MsgPumpAutoStop . \$telegramWorkMsg)\r\
-}\r\
-:global NasosInitStatus;\r\
-:global PoeActiveTimer;\r\
+:global MsgStopCmdTemplate ":global PoeActiveTimer;\r\
+:global PoeTimerName;\r\
 :global PoeStartTime;\r\
 :global PoeMainInterface;\r\
+:global BotToken;\r\
+:global ChatId;\r\
 :global LastStopTime;\r\
-:if ([:typeof \$NasosInitStatus] = \"nothing\" || !\$NasosInitStatus) do {\r\
-    :error \"Насос не инициализирован\";\r\
-}\r\
+:global MsgSysStarted;\r\
+:global MsgNewLine;\r\
+:global MsgStatusCurrent;\r\
+:global MsgPumpAutoStop;\r\
+:global MsgTimeWorked;\r\
+:global MsgTimeMin;\r\
+:global MsgTimeSec;\r\
+:local telegramWorkMsg \"\";\r\
 :if ([:len \$PoeStartTime] > 0) do {\r\
     :local workSeconds ([:timestamp] - \$PoeStartTime);\r\
     :local workMinutes ((\$workSeconds - (\$workSeconds % 60)) / 60);\r\
@@ -174,6 +176,8 @@
 }\r\
 /interface ethernet set [find name=\$PoeMainInterface] poe-out=off;\r\
 :set LastStopTime [:timestamp];\r\
-:set PoeStartTime \"\";\r\
+:local telegramMsg (\$MsgSysStarted . \$MsgNewLine . \$MsgStatusCurrent . \$MsgNewLine . \$MsgPumpAutoStop . \$telegramWorkMsg);\r\
+/tool fetch url=(\"https://api.telegram.org/bot\" . \$BotToken . \"/sendMessage\") http-method=post http-data=(\"chat_id=\" . \$ChatId . \"&text=\" . \$telegramMsg) keep-result=no;\r\
+/system scheduler remove [find name=\$PoeTimerName];\r\
 :set PoeActiveTimer \"\";\r\
-\$sendTelegram"
+:set PoeStartTime \"\""

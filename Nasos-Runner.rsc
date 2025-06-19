@@ -5,6 +5,7 @@
 :global NewDuration
 :global PoeActiveTimer
 :global PoeStartTime
+:global PoeTimerName
 :global LastStopTime
 :global MsgSysStarted
 :global MsgSysError
@@ -69,14 +70,19 @@
     :log error "Насос - POE интерфейс не найден"
     $sendTelegram $BotToken $ChatId ($MsgSysStarted . $MsgNewLine . $MsgSysError . "POE%20%D0%B8%D0%BD%D1%82%D0%B5%D1%80%D1%84%D0%B5%D0%B9%D1%81%20%D0%BD%D0%B5%20%D0%BD%D0%B0%D0%B9%D0%B4%D0%B5%D0%BD")
 } else={
+    # ОТЛАДКА: Вывод текущего статуса POE при запуске скрипта
+    :local currentPoeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
+    :log warning ("Насос - ОТЛАДКА: Текущий статус POE при запуске = [" . $currentPoeStatus . "]")
     :if ([:len $NewDuration] = 0) do={
         :log info "Насос - Длительность не установлена"
     } else={
         :if ([:typeof $NewDuration] = "num") do={
             :local poeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
             :if ($NewDuration = 0) do={
+                # ОТЛАДКА: Вывод текущего статуса POE
+                :log warning ("Насос - ОТЛАДКА: Текущий статус POE = [" . $poeStatus . "]")
                 # ПРОВЕРКА ТЕКУЩЕГО СТАТУСА POE ПЕРЕД ОТКЛЮЧЕНИЕМ
-                :if ($poeStatus = "forced-on") do={
+                :if ($poeStatus != "off") do={
                     # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ФИЗИЧЕСКОЕ ОТКЛЮЧЕНИЕ POE
                     /interface ethernet poe set $PoeMainInterface poe-out=off
                     :log warning "Насос - POE ФИЗИЧЕСКИ ОТКЛЮЧЕН"
@@ -341,9 +347,8 @@
                                     :log warning ("Насос - Удален старый таймер: " . $PoeActiveTimer)
                                 }
                             }
-                            :local timerName "nasos-poe-timer"
-                            :local stopCmd [:parse $MsgStopCmdTemplate]
-                            /system scheduler add name=$timerName interval=$newInterval on-event=$stopCmd
+                            :local timerName $PoeTimerName
+                            /system scheduler add name=$timerName interval=$newInterval on-event=$MsgStopCmdTemplate
                             :set PoeActiveTimer $timerName
                             :log warning ("Насос - Создан новый таймер: " . $timerName . " с интервалом: " . $newInterval)
                         } else={
@@ -366,9 +371,8 @@
                                     :log warning ("Насос - Удален старый таймер: " . $PoeActiveTimer)
                                 }
                             }
-                            :local timerName "nasos-poe-timer"
-                            :local stopCmd [:parse $MsgStopCmdTemplate]
-                            /system scheduler add name=$timerName interval=$schedulerInterval on-event=$stopCmd
+                            :local timerName $PoeTimerName
+                            /system scheduler add name=$timerName interval=$schedulerInterval on-event=$MsgStopCmdTemplate
                             :set PoeActiveTimer $timerName
                             :log warning ("Насос - Создан новый таймер: " . $timerName . " с интервалом: " . $schedulerInterval)
                         }
@@ -378,7 +382,6 @@
             }
         } else={
             :log error "Насос - Длительность должна быть числом"
-            $sendTelegram $BotToken $ChatId ($MsgSysStarted . $MsgNewLine . $MsgSysError . "%D0%94%D0%BB%D0%B8%D1%82%D0%B5%D0%BB%D1%8C%D0%BD%D0%BE%D1%81%D1%82%D1%8C%20%D0%B4%D0%BE%D0%BB%D0%B6%D0%BD%D0%B0%20%D0%B1%D1%8B%D1%82%D1%8C%20%D1%87%D0%B8%D1%81%D0%BB%D0%BE%D0%BC")
         }
     }
 } 

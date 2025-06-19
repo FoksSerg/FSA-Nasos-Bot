@@ -8,6 +8,7 @@
 :global ChatId "YOUR_CHAT_ID"
 :global PoeActiveTimer
 :global PoeStartTime
+:global PoeTimerName "nasos-poe-timer"
 :global NewDuration
 :global TelegramHeartbeat
 :global LastUpdateId
@@ -36,10 +37,10 @@
     :set cleanedCount ($cleanedCount + 1)
     :log warning ("Насос - Удален старый таймер: " . $timerName)
 }
-:if ([:len [/system scheduler find name="nasos-poe-timer"]] > 0) do={
-    /system scheduler remove [find name="nasos-poe-timer"]
+:if ([:len [/system scheduler find name=$PoeTimerName]] > 0) do={
+    /system scheduler remove [find name=$PoeTimerName]
     :set cleanedCount ($cleanedCount + 1)
-    :log warning "Насос - Удален таймер: nasos-poe-timer"
+    :log warning ("Насос - Удален таймер: " . $PoeTimerName)
 }
 :set PoeActiveTimer ""
 :if ($cleanedCount > 0) do={
