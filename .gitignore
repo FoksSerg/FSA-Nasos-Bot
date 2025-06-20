@@ -59,11 +59,13 @@ Thumbs.db
 *token*
 *secret*
 config.local.*
+Nasos-Init.rsc
 
-# Тестовые файлы (можно исключить при желании)
-# Send-Telegram.rsc
-# Test-Telegram-Fetch.rsc Nasos-Init.rsc
-*.rsc
+# Тестовые файлы RouterOS
+Test-*.rsc
+Debug-*.rsc
+*-test.rsc
+*-debug.rsc
 
 # Тестовые файлы
 Test/
