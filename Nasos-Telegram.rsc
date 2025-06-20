@@ -1,3 +1,10 @@
+# ===== NASOS TELEGRAM =====
+# Модуль обработки команд Telegram бота системы управления насосом
+# Автор: Фокин Сергей Александрович foks_serg@mail.ru
+# Дата создания: 15 июня 2025
+# Версия: 1.4
+
+# Объявление глобальных переменных
 :global NasosInitStatus
 :global BotToken
 :global ChatId
@@ -36,15 +43,21 @@
 :global MsgTimeSec
 :global MsgNewLine
 
+# Проверка инициализации системы
 :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
     :log warning "Насос - Запуск Nasos-Init"
     /system script run Nasos-Init
 }
+
+# Проверка обязательных переменных
 :if ([:len $BotToken] = 0 or [:len $ChatId] = 0) do={
     :log error "Насос - КРИТИЧЕСКАЯ ОШИБКА: BotToken или ChatId не определены!"
 }
+
+# Инициализация счетчика циклов и настройка offset для Telegram API
 :local loopCounter 0
 :if ([:typeof $LastUpdateId] = "nothing" || [:len $LastUpdateId] = 0) do={
+    # Получение последнего update_id для пропуска старых сообщений
     :local initUpdates [/tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/getUpdates?offset=-1&limit=1") as-value output=user]
     :local initContent ($initUpdates->"data")
     :local updateIdPos [:find $initContent "\"update_id\":"]
@@ -61,11 +74,17 @@
 } else={
     :log info ("Насос - Telegram продолжает работу с LastUpdateId: " . $LastUpdateId)
 }
+
+# Настройка меню Telegram бота
 :log info "Насос - Настройка меню Telegram бота..."
 :log warning "Насос - Запуск Nasos-SetMenu"
 /system script run Nasos-SetMenu
 :log info "Насос - Меню бота установлено успешно"
+
+# Запуск основного цикла мониторинга
 :log info "Насос - Запуск цикла мониторинга Telegram..."
+
+# Определение текущего статуса насоса для приветственного сообщения
 :local poeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
 :local currentStatus
 :if ($poeStatus = "forced-on") do={
@@ -73,15 +92,24 @@
 } else={
     :set currentStatus $MsgPumpOff
 }
+
+# Отправка приветственного сообщения с меню команд
 :local welcomeMsg ($MsgSysStarted . $MsgNewLine . $MsgStatusCurrent . $currentStatus . $MsgNewLine . $MsgNewLine . $MsgMenuHeader . $MsgNewLine . $MsgMenuStop . $MsgNewLine . $MsgMenuStatus . $MsgNewLine . $MsgMenuStart5 . $MsgNewLine . $MsgMenuStart10 . $MsgNewLine . $MsgMenuStart30 . $MsgNewLine . $MsgMenuStart60 . $MsgNewLine . $MsgMenuStart120 . $MsgNewLine . $MsgMenuShow)
 /tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $welcomeMsg) keep-result=no
 :log info "Насос - Отправлено приветственное сообщение"
+
+# Основной цикл обработки команд Telegram
 :while (true) do={
     :set loopCounter ($loopCounter + 1)
+    # Обновление heartbeat для мониторинга работы модуля
     :set TelegramHeartbeat [/system clock get time]
+    
+    # Получение новых сообщений от Telegram API
     :local getUrl ("https://api.telegram.org/bot" . $BotToken . "/getUpdates?limit=5&offset=" . $LastUpdateId)
     :local updates [/tool fetch url=$getUrl as-value output=user]
     :local content ($updates->"data")
+    
+    # Обновление offset для следующего запроса
     :local updateIdPos [:find $content "\"update_id\":"]
     :if ([:len $updateIdPos] > 0) do={
         :local idStart ($updateIdPos + 12)
@@ -89,11 +117,15 @@
         :local newUpdateId [:pick $content $idStart $idEnd]
         :set LastUpdateId ($newUpdateId + 1)
     }
+    
+    # Обработка команды остановки насоса
     :if ([:len [:find $content "\"text\":\"stop\""]] > 0 or [:len [:find $content "\"text\":\"/stop\""]] > 0) do={
         :log warning "Насос - НАЙДЕНА КОМАНДА STOP - выполняется Nasos-Runner"
         :set NewDuration 0
         /system script run Nasos-Runner
     }
+    
+    # Обработка команд запуска насоса на разное время
     :if ([:len [:find $content "\"text\":\"start 5\""]] > 0 or [:len [:find $content "\"text\":\"/start5\""]] > 0) do={
         :log warning "Насос - НАЙДЕНА КОМАНДА START 5 - выполняется Nasos-Runner"
         :set NewDuration 300
@@ -119,18 +151,26 @@
         :set NewDuration 7200
         /system script run Nasos-Runner
     }
+    
+    # Обработка команды показа меню
     :if ([:len [:find $content "\"text\":\"menu\""]] > 0 or [:len [:find $content "\"text\":\"/menu\""]] > 0) do={
         :log warning "Насос - НАЙДЕНА КОМАНДА MENU - отправляется список команд"
         :local menuText ($MsgMenuHeader . $MsgNewLine . $MsgMenuStop . $MsgNewLine . $MsgMenuStatus . $MsgNewLine . $MsgMenuStart5 . $MsgNewLine . $MsgMenuStart10 . $MsgNewLine . $MsgMenuStart30 . $MsgNewLine . $MsgMenuStart60 . $MsgNewLine . $MsgMenuStart120 . $MsgNewLine . $MsgMenuShow)
         /tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $menuText) keep-result=no
     }
+    
+    # Обработка команды проверки статуса
     :if ([:len [:find $content "\"text\":\"status\""]] > 0 or [:len [:find $content "\"text\":\"/status\""]] > 0) do={
         :log warning "Насос - НАЙДЕНА КОМАНДА STATUS - проверяется состояние насоса"
         :local poeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
         :local currentTime [/system clock get time]
         :local statusText ($MsgHeader . $MsgNewLine . $MsgStatusHeader . $MsgNewLine)
+        
+        # Формирование статуса для работающего насоса
         :if ($poeStatus = "forced-on") do={
             :set statusText ($statusText . $MsgStatusRunning . $MsgNewLine)
+            
+            # Расчет времени работы
             :if ([:len $PoeStartTime] > 0) do={
                 :local startHours [:pick $PoeStartTime 0 2]
                 :local startMinutes [:pick $PoeStartTime 3 5]
@@ -148,6 +188,8 @@
                 :local workSecondsRem ($workSeconds - ($workMinutes * 60))
                 :set statusText ($statusText . $MsgStatusWorkingTime . [:tostr $workMinutes] . $MsgTimeMin . [:tostr $workSecondsRem] . $MsgTimeSec . $MsgNewLine)
             }
+            
+            # Проверка наличия активного таймера и расчет оставшегося времени
             :if ([:len $PoeActiveTimer] > 0 && [:len [/system scheduler find name=$PoeActiveTimer]] > 0) do={
                 :local timerInterval [/system scheduler get [find name=$PoeActiveTimer] interval]
                 :local intervalHours [:pick $timerInterval 0 2]
@@ -181,7 +223,10 @@
                 :set statusText ($statusText . $MsgStatusNoAutoStop . $MsgNewLine)
             }
         } else={
+            # Формирование статуса для остановленного насоса
             :set statusText ($statusText . $MsgStatusStopped . $MsgNewLine)
+            
+            # Расчет времени с момента остановки
             :if ([:len $LastStopTime] > 0) do={
                 :local stopHours [:pick $LastStopTime 0 2]
                 :local stopMinutes [:pick $LastStopTime 3 5]

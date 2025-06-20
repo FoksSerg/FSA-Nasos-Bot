@@ -1,3 +1,9 @@
+# ===== NASOS MESSAGES =====
+# Модуль сообщений для Telegram бота системы управления насосом
+# Автор: Фокин Сергей Александрович foks_serg@mail.ru
+# Дата создания: 15 июня 2025
+# Версия: 1.4
+
 # ===== NASOS TELEGRAM BOT MESSAGES =====
 
 # ===== 1. СИСТЕМНЫЕ СООБЩЕНИЯ =====
@@ -152,7 +158,7 @@
 :global MsgSysWatchdogTimeout "%F0%9F%94%84%20%D0%A1%D1%82%D0%BE%D1%80%D0%BE%D0%B6%3A%20%D0%9F%D0%B5%D1%80%D0%B5%D0%B7%D0%B0%D0%BF%D1%83%D1%81%D0%BA%20%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%20%D1%82%D0%B0%D0%B9%D0%BC%D0%B0%D1%83%D1%82%D0%B0"
 
 # ===== 7. ШАБЛОНЫ КОМАНД =====
-# Шаблон команды остановки
+# Шаблон команды остановки для таймера
 :global MsgStopCmdTemplate ":global PoeActiveTimer;\r\
 :global PoeTimerName;\r\
 :global PoeStartTime;\r\

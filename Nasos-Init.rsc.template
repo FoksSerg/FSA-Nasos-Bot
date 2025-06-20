@@ -1,11 +1,22 @@
-# Основные переменные
+# ===== NASOS INIT TEMPLATE =====
+# Шаблон модуля инициализации системы управления насосом
+# ВНИМАНИЕ: Это шаблон! Скопируйте в Nasos-Init.rsc и настройте токены
+# Автор: Фокин Сергей Александрович foks_serg@mail.ru
+# Дата создания: 15 июня 2025
+# Версия: 1.4
+
+# Основные переменные системы
 :global NasosInitStatus false
 :global PoeMainInterface "E5-Nasos"
-# Рабочий
+
+# Настройки Telegram бота (ТРЕБУЮТ НАСТРОЙКИ!)
+# Рабочий бот
 # :global BotToken "YOUR_BOT_TOKEN"
-# Тестовый
+# Тестовый бот
 :global BotToken "YOUR_BOT_TOKEN"
 :global ChatId "YOUR_CHAT_ID"
+
+# Переменные состояния системы
 :global PoeActiveTimer
 :global PoeStartTime
 :global PoeTimerName "nasos-poe-timer"
@@ -15,36 +26,46 @@
 :global LastStopTime
 :global MsgSysPoeDisabled
 
-# Инициализация сообщений
+# Инициализация модуля сообщений
 :log warning "Насос - Запуск Nasos-Messages"
 /system script run Nasos-Messages
 
-# Проверка и отключение POE при старте
+# Проверка и отключение POE при старте системы
 :if ([:len [/interface ethernet find where name=$PoeMainInterface]] > 0) do={
     :log warning "Насос - Отключение POE после перезагрузки"
+    # Цикл питания для надежного отключения
     /interface ethernet poe power-cycle $PoeMainInterface
     :delay 2s
+    # Принудительное отключение POE
     /interface ethernet poe set $PoeMainInterface poe-out=off
     :log warning "Насос - POE отключен"
+    # Уведомление в Telegram об отключении
     /tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $MsgSysPoeDisabled) keep-result=no
 }
 
-# Очистка старых таймеров
+# Очистка старых таймеров при инициализации
 :local cleanedCount 0
+# Поиск и удаление таймеров POE
 :foreach timer in=[/system scheduler find where name~"poe-timer"] do={
     :local timerName [/system scheduler get $timer name]
     /system scheduler remove $timer
     :set cleanedCount ($cleanedCount + 1)
     :log warning ("Насос - Удален старый таймер: " . $timerName)
 }
+# Удаление основного таймера насоса
 :if ([:len [/system scheduler find name=$PoeTimerName]] > 0) do={
     /system scheduler remove [find name=$PoeTimerName]
     :set cleanedCount ($cleanedCount + 1)
     :log warning ("Насос - Удален таймер: " . $PoeTimerName)
 }
+
+# Сброс переменных состояния
 :set PoeActiveTimer ""
 :if ($cleanedCount > 0) do={
-    :log warning ("Насос - Очистка таймеров завершена. Удалено: " . $cleanedCount)}
+    :log warning ("Насос - Очистка таймеров завершена. Удалено: " . $cleanedCount)
+}
+
+# Установка флага успешной инициализации
 :set NasosInitStatus true
 
 :log info "Насос - Глобальные переменные инициализированы" 

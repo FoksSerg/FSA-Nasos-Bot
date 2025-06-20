@@ -1,5 +1,8 @@
 # ===== NASOS TIME UTILITIES =====
-# Модуль для работы с временными интервалами
+# Модуль для работы с временными интервалами в системе управления насосом
+# Автор: Фокин Сергей Александрович foks_serg@mail.ru
+# Дата создания: 19 июня 2025
+# Версия: 1.0
 
 # Объявление глобальных переменных
 :global formatTimeInterval
@@ -24,6 +27,7 @@
     :local minShortTg "%20%D0%BC%D0%B8%D0%BD%2E%20"
     :local secShortTg "%20%D1%81%D0%B5%D0%BA%2E"
     
+    # Проверка на нулевое или отрицательное время
     :if ($totalSeconds <= 0) do={
         :global FormattedLog "0 сек."
         :global FormattedTelegram "0%20%D1%81%D0%B5%D0%BA%2E"
@@ -73,16 +77,19 @@
     :local startTime $1
     :local currentTime $2
     
+    # Парсинг времени начала
     :local startHours [:pick $startTime 0 2]
     :local startMinutes [:pick $startTime 3 5]
     :local startSecs [:pick $startTime 6 8]
     :local startSeconds ($startHours * 3600 + $startMinutes * 60 + $startSecs)
     
+    # Парсинг текущего времени
     :local currentHours [:pick $currentTime 0 2]
     :local currentMins [:pick $currentTime 3 5]
     :local currentSecs [:pick $currentTime 6 8]
     :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
     
+    # Расчет разности с учетом перехода через полночь
     :local diff ($currentSeconds - $startSeconds)
     :if ($diff < 0) do={
         :set diff ($diff + 86400)

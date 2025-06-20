@@ -1,3 +1,10 @@
+# ===== NASOS RUNNER =====
+# Основной модуль управления POE насосом через Telegram бота
+# Автор: Фокин Сергей Александрович foks_serg@mail.ru
+# Дата создания: 15 июня 2025
+# Версия: 1.4
+
+# Объявление глобальных переменных
 :global NasosInitStatus
 :global BotToken
 :global ChatId
@@ -51,14 +58,18 @@
 :global MsgPumpAlreadyStopped
 :global MsgTimeSinceStop
 
+# Проверка инициализации системы
 :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
     :log warning "Насос - Запуск Nasos-Init"
     /system script run Nasos-Init
 }
+
+# Проверка обязательных глобальных переменных
 :if ([:len $BotToken] = 0 or [:len $ChatId] = 0 or [:len $PoeMainInterface] = 0) do={
     :log error "Насос - КРИТИЧЕСКАЯ ОШИБКА: Обязательные глобальные переменные не определены!"
-    :error "Configuration error - check global variables"
 }
+
+# Функция отправки сообщений в Telegram
 :local sendTelegram do={
     :local token $1
     :local chatId $2
@@ -66,27 +77,35 @@
     :local url "https://api.telegram.org/bot$token/sendMessage"
     /tool fetch url=$url http-method=post http-data="chat_id=$chatId&text=$message" keep-result=no
 }
+
+# Проверка существования POE интерфейса
 :if ([:len [/interface ethernet find name=$PoeMainInterface]] = 0) do={
     :log error "Насос - POE интерфейс не найден"
     $sendTelegram $BotToken $ChatId ($MsgSysStarted . $MsgNewLine . $MsgSysError . "POE%20%D0%B8%D0%BD%D1%82%D0%B5%D1%80%D1%84%D0%B5%D0%B9%D1%81%20%D0%BD%D0%B5%20%D0%BD%D0%B0%D0%B9%D0%B4%D0%B5%D0%BD")
 } else={
-    # ОТЛАДКА: Вывод текущего статуса POE при запуске скрипта
+    # Отладочная информация о текущем статусе POE
     :local currentPoeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
     :log warning ("Насос - ОТЛАДКА: Текущий статус POE при запуске = [" . $currentPoeStatus . "]")
+    
+    # Проверка наличия команды на выполнение
     :if ([:len $NewDuration] = 0) do={
         :log info "Насос - Длительность не установлена"
     } else={
+        # Проверка типа данных команды
         :if ([:typeof $NewDuration] = "num") do={
             :local poeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
+            
+            # Команда остановки насоса (NewDuration = 0)
             :if ($NewDuration = 0) do={
-                # ОТЛАДКА: Вывод текущего статуса POE
                 :log warning ("Насос - ОТЛАДКА: Текущий статус POE = [" . $poeStatus . "]")
-                # ПРОВЕРКА ТЕКУЩЕГО СТАТУСА POE ПЕРЕД ОТКЛЮЧЕНИЕМ
+                
+                # Проверка текущего статуса POE перед отключением
                 :if ($poeStatus != "off") do={
-                    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: ФИЗИЧЕСКОЕ ОТКЛЮЧЕНИЕ POE
+                    # Физическое отключение POE
                     /interface ethernet poe set $PoeMainInterface poe-out=off
                     :log warning "Насос - POE ФИЗИЧЕСКИ ОТКЛЮЧЕН"
                 
+                # Расчет времени работы насоса
                 :local workTimeMsg ""
                 :if ([:len $PoeStartTime] > 0) do={
                     :local currentTime [/system clock get time]
@@ -110,12 +129,14 @@
                     :local workSecondsRem ($workSeconds - ($workMinutes * 60))
                     :set workTimeMsg ($MsgTimeWorkedTemplate . [:tostr $workMinutes] . $MsgTimeMin . [:tostr $workSecondsRem] . $MsgTimeSec)
                 }
+                
+                # Сохранение времени остановки
                 :set LastStopTime [/system clock get time]
                 :local logMsg "Насос - НАСОС ОСТАНОВЛЕН ПО КОМАНДЕ"
                 :set logMsg ($logMsg . $workTimeMsg)
                 :log warning $logMsg
                 
-                # Telegram сообщение с временем работы
+                # Формирование Telegram сообщения с временем работы
                 :local telegramWorkMsg ""
                 :if ([:len $PoeStartTime] > 0) do={
                     :local currentTime [/system clock get time]
@@ -139,8 +160,12 @@
                     :local workSecondsRem ($workSeconds - ($workMinutes * 60))
                     :set telegramWorkMsg ($MsgTimeAlreadyWorkedTranslit . [:tostr $workMinutes] . " minut " . [:tostr $workSecondsRem] . " sekund")
                 }
+                
+                # Отправка уведомления в Telegram
                 :local telegramMsg ($MsgHeader . $MsgNewLine . $MsgStatusHeader . $MsgNewLine . $MsgPumpStoppedByCmd . $telegramWorkMsg)
                 $sendTelegram $BotToken $ChatId $telegramMsg
+                
+                # Удаление активного таймера
                 :if ([:len $PoeActiveTimer] > 0) do={
                     :if ([:len [/system scheduler find name=$PoeActiveTimer]] > 0) do={
                         /system scheduler remove [find name=$PoeActiveTimer]
@@ -148,6 +173,8 @@
                     }
                     :set PoeActiveTimer ""
                 }
+                
+                # Очистка старых таймеров
                 :foreach timer in=[/system scheduler find where name~"poe-timer"] do={
                     :local timerName [/system scheduler get $timer name]
                     /system scheduler remove $timer
@@ -159,7 +186,7 @@
                 :set NewDuration ""
                 
                 } else={
-                    # НАСОС УЖЕ ОТКЛЮЧЕН - показываем время с момента отключения
+                    # Насос уже отключен - показываем время с момента отключения
                     :local timeSinceStopMsg ""
                     :if ([:len $LastStopTime] > 0) do={
                         :local currentTime [/system clock get time]
@@ -187,13 +214,17 @@
                 }
                 
             } else={
+                # Команда уменьшения времени работы (NewDuration < 0)
                 :if ($NewDuration < 0) do={
                     :if ([:len $PoeActiveTimer] > 0) do={
+                        # Получение текущего интервала таймера
                         :local currentInterval [/system scheduler get [find name=$PoeActiveTimer] interval]
                         :local intervalHours [:pick $currentInterval 0 2]
                         :local intervalMins [:pick $currentInterval 3 5]
                         :local intervalSecs [:pick $currentInterval 6 8]
                         :local currentIntervalSeconds ($intervalHours * 3600 + $intervalMins * 60 + $intervalSecs)
+                        
+                        # Расчет времени работы
                         :local workSeconds 0
                         :if ([:len $PoeStartTime] > 0) do={
                             :local currentTime [/system clock get time]
@@ -210,9 +241,14 @@
                                 :set workSeconds ($workSeconds + 86400)
                             }
                         }
+                        
+                        # Расчет нового времени работы
                         :local remainingSeconds ($currentIntervalSeconds - $workSeconds)
                         :local newRemainingSeconds ($remainingSeconds + $NewDuration)
+                        
+                        # Проверка на превышение времени
                         :if ($newRemainingSeconds <= 0) do={
+                            # Немедленная остановка - время истекло
                             :local workTimeMsg ""
                             :if ([:len $PoeStartTime] > 0) do={
                                 :local currentTime [/system clock get time]
@@ -236,11 +272,15 @@
                                 :local workSecondsRem ($workSeconds - ($workMinutes * 60))
                                 :set workTimeMsg ($MsgTimeWorkedTemplate . [:tostr $workMinutes] . $MsgTimeMin . [:tostr $workSecondsRem] . $MsgTimeSec)
                             }
+                            
+                            # Отправка уведомления об автоматической остановке
                             $sendTelegram $BotToken $ChatId ($MsgSysStarted . $MsgNewLine . $MsgStatusCurrent . $MsgNewLine . $MsgPumpAutoStop . $workTimeMsg)
                             :set LastStopTime [/system clock get time]
                             :local logMsg "Насос - НАСОС ОСТАНОВЛЕН - время уменьшено"
                             :set logMsg ($logMsg . $workTimeMsg)
                             :log warning $logMsg
+                            
+                            # Формирование Telegram сообщения
                             :local telegramWorkMsg ""
                             :if ([:len $PoeStartTime] > 0) do={
                                 :local workMinutes ($workSeconds / 60)
@@ -249,6 +289,8 @@
                             }
                             :local telegramMsg ($MsgHeader . $MsgNewLine . $MsgStatusHeader . $MsgNewLine . $MsgPumpStoppedTimeReduced . $telegramWorkMsg)
                             $sendTelegram $BotToken $ChatId $telegramMsg
+                            
+                            # Удаление таймера и очистка переменных
                             :if ([:len $PoeActiveTimer] > 0) do={
                                 :if ([:len [/system scheduler find name=$PoeActiveTimer]] > 0) do={
                                     /system scheduler remove [find name=$PoeActiveTimer]
@@ -259,15 +301,22 @@
                             :set PoeStartTime ""
                             :set NewDuration ""
                         } else={
+                            # Обновление таймера с новым интервалом
                             :local newTotalSeconds ($workSeconds + $newRemainingSeconds)
                             :local newIntervalHours ($newRemainingSeconds / 3600)
                             :local newIntervalMins (($newRemainingSeconds - ($newIntervalHours * 3600)) / 60)
                             :local newIntervalSecsRem ($newRemainingSeconds - ($newIntervalHours * 3600) - ($newIntervalMins * 60))
+                            
+                            # Форматирование времени
                             :if ($newIntervalHours < 10) do={ :set newIntervalHours ("0" . $newIntervalHours) }
                             :if ($newIntervalMins < 10) do={ :set newIntervalMins ("0" . $newIntervalMins) }
                             :if ($newIntervalSecsRem < 10) do={ :set newIntervalSecsRem ("0" . $newIntervalSecsRem) }
                             :local newInterval ($newIntervalHours . ":" . $newIntervalMins . ":" . $newIntervalSecsRem)
+                            
+                            # Обновление таймера
                             /system scheduler set [find name=$PoeActiveTimer] interval=$newInterval
+                            
+                            # Расчет уменьшенного времени для отчета
                             :local reducedSecs (0 - $NewDuration)
                             :local reducedMinutes ($reducedSecs / 60)
                             :local reducedSecondsRem ($reducedSecs - ($reducedMinutes * 60))
@@ -275,12 +324,16 @@
                             :local totalSecondsRem ($newTotalSeconds - ($totalMinutes * 60))
                             :local workMinutes ($workSeconds / 60)
                             :local workSecondsRem ($workSeconds - ($workMinutes * 60))
+                            
+                            # Формирование сообщений
                             :local msg1 ($MsgTimeReduced . " " . $reducedMinutes . $MsgTimeMin . $reducedSecondsRem . $MsgTimeSec)
                             :local msg2 ($MsgNewLine . $MsgTimeWorked . $workMinutes . $MsgTimeMin . $workSecondsRem . $MsgTimeSec)
                             :local msg3 ($MsgTimeExpectedTotal . " " . $totalMinutes . $MsgTimeMin . $totalSecondsRem . $MsgTimeSec)
                             :local fullMsg ($msg1 . $msg2)
                             :log warning $fullMsg
                             :log warning $msg3
+                            
+                            # Отправка уведомлений в Telegram
                             :local telegramWorkMsg ($MsgTimeAlreadyWorkedTranslit . [:tostr $workMinutes] . " minut " . [:tostr $workSecondsRem] . " sekund")
                             :local telegramMsg ($MsgTimeReduced . " " . $reducedMinutes . $MsgTimeMin . $reducedSecondsRem . $MsgTimeSec . $telegramWorkMsg)
                             $sendTelegram $BotToken $ChatId $telegramMsg
@@ -289,15 +342,20 @@
                             :set NewDuration ""
                         }
                     } else={
+                        # Ошибка - нет активного таймера
                         :log error "Насос - Нет активного таймера"
                         $sendTelegram $BotToken $ChatId ($MsgSysStarted . $MsgNewLine . $MsgSysError . "%D0%9D%D0%B5%D1%82%20%D0%B0%D0%BA%D1%82%D0%B8%D0%B2%D0%BD%D0%BE%D0%B3%D0%BE%20%D1%82%D0%B0%D0%B9%D0%BC%D0%B5%D1%80%D0%B0")
                         :set NewDuration ""
                     }
                 } else={
+                    # Команда запуска или продления работы насоса (NewDuration > 0)
                     :if ($NewDuration > 0) do={
                         :local durationMinutes ($NewDuration / 60)
                         :local durationSeconds ($NewDuration - ($durationMinutes * 60))
+                        
+                        # Проверка текущего состояния насоса
                         :if ($poeStatus = "forced-on") do={
+                            # Насос уже работает - продление времени работы
                             :local workTimeMsg ""
                             :local workSeconds 0
                             :if ([:len $PoeStartTime] > 0) do={
@@ -322,18 +380,26 @@
                                 :local workSecondsRem ($workSeconds - ($workMinutes * 60))
                                 :set workTimeMsg ($MsgTimeAlreadyWorkedTemplate . [:tostr $workMinutes] . $MsgTimeMin . [:tostr $workSecondsRem] . $MsgTimeSec)
                             }
+                            
+                            # Логирование продления работы
                             :local logMsg ("Насос - НАСОС УЖЕ РАБОТАЕТ - будет работать еще" . " " . $durationMinutes . " минут " . $durationSeconds . " секунд")
                             :set logMsg ($logMsg . $workTimeMsg)
                             :log warning $logMsg
+                            
+                            # Расчет общего ожидаемого времени работы
                             :local totalExpectedTime ($workSeconds + $NewDuration)
                             :local totalExpectedMinutes ($totalExpectedTime / 60)
                             :local totalExpectedSeconds ($totalExpectedTime - ($totalExpectedMinutes * 60))
                             :log warning ($MsgTimeExpectedTotal . " " . $totalExpectedMinutes . $MsgTimeMin . $totalExpectedSeconds . $MsgTimeSec)
+                            
+                            # Отправка уведомления в Telegram
                             :local telegramWorkMsg ($MsgTimeAlreadyWorkedTranslit . [:tostr $workMinutes] . " minut " . [:tostr $workSecondsRem] . " sekund")
                             :local telegramMsg ($MsgHeader . $MsgNewLine . $MsgStatusHeader . $MsgNewLine . $MsgPumpAlreadyOn . $MsgNewLine . $MsgTimeRemaining . " " . $durationMinutes . $MsgTimeMin . $durationSeconds . $MsgTimeSec . $telegramWorkMsg)
                             $sendTelegram $BotToken $ChatId $telegramMsg
                             :local telegramTotalMsg ($MsgTimeExpectedTotal . " " . $totalExpectedMinutes . $MsgTimeMin . $totalExpectedSeconds . $MsgTimeSec)
                             $sendTelegram $BotToken $ChatId $telegramTotalMsg
+                            
+                            # Создание нового таймера с продленным временем
                             :local intervalHours ($NewDuration / 3600)
                             :local intervalMins (($NewDuration - ($intervalHours * 3600)) / 60)
                             :local intervalSecs ($NewDuration - ($intervalHours * 3600) - ($intervalMins * 60))
@@ -341,23 +407,32 @@
                             :if ($intervalMins < 10) do={ :set intervalMins ("0" . $intervalMins) }
                             :if ($intervalSecs < 10) do={ :set intervalSecs ("0" . $intervalSecs) }
                             :local newInterval ($intervalHours . ":" . $intervalMins . ":" . $intervalSecs)
+                            
+                            # Удаление старого таймера
                             :if ([:len $PoeActiveTimer] > 0) do={
                                 :if ([:len [/system scheduler find name=$PoeActiveTimer]] > 0) do={
                                     /system scheduler remove [find name=$PoeActiveTimer]
                                     :log warning ("Насос - Удален старый таймер: " . $PoeActiveTimer)
                                 }
                             }
+                            
+                            # Создание нового таймера
                             :local timerName $PoeTimerName
                             /system scheduler add name=$timerName interval=$newInterval on-event=$MsgStopCmdTemplate
                             :set PoeActiveTimer $timerName
                             :log warning ("Насос - Создан новый таймер: " . $timerName . " с интервалом: " . $newInterval)
                         } else={
+                            # Запуск насоса
                             /interface ethernet set [find name=$PoeMainInterface] poe-out=forced-on
                             :set PoeStartTime [/system clock get time]
                             :local logMsg ("Насос - НАСОС ЗАПУЩЕН на " . $durationMinutes . " минут " . $durationSeconds . " секунд")
                             :log warning $logMsg
+                            
+                            # Отправка уведомления о запуске
                             :local telegramMsg ($MsgHeader . $MsgNewLine . $MsgStatusHeader . $MsgNewLine . $MsgPumpStartedFor . " " . $durationMinutes . $MsgTimeMin . $durationSeconds . $MsgTimeSec)
                             $sendTelegram $BotToken $ChatId $telegramMsg
+                            
+                            # Создание таймера остановки
                             :local intervalHours ($NewDuration / 3600)
                             :local intervalMins (($NewDuration - ($intervalHours * 3600)) / 60)
                             :local intervalSecs ($NewDuration - ($intervalHours * 3600) - ($intervalMins * 60))
@@ -365,22 +440,28 @@
                             :if ($intervalMins < 10) do={ :set intervalMins ("0" . $intervalMins) }
                             :if ($intervalSecs < 10) do={ :set intervalSecs ("0" . $intervalSecs) }
                             :local schedulerInterval ($intervalHours . ":" . $intervalMins . ":" . $intervalSecs)
+                            
+                            # Удаление старых таймеров
                             :if ([:len $PoeActiveTimer] > 0) do={
                                 :if ([:len [/system scheduler find name=$PoeActiveTimer]] > 0) do={
                                     /system scheduler remove [find name=$PoeActiveTimer]
                                     :log warning ("Насос - Удален старый таймер: " . $PoeActiveTimer)
                                 }
                             }
+                            
+                            # Создание нового таймера
                             :local timerName $PoeTimerName
                             /system scheduler add name=$timerName interval=$schedulerInterval on-event=$MsgStopCmdTemplate
                             :set PoeActiveTimer $timerName
                             :log warning ("Насос - Создан новый таймер: " . $timerName . " с интервалом: " . $schedulerInterval)
                         }
+                        # Очистка команды
                         :set NewDuration ""
                     }
                 }
             }
         } else={
+            # Ошибка типа данных
             :log error "Насос - Длительность должна быть числом"
         }
     }
