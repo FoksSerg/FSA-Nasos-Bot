@@ -1,8 +1,8 @@
 # ===== NASOS RUNNER =====
 # Основной модуль управления POE насосом через Telegram бота
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
-# Дата создания: 15 июня 2025
-# Версия: 1.4
+# Дата создания: 19 декабря 2024
+# Версия: 1.5
 
 # Объявление глобальных переменных
 :global NasosInitStatus
@@ -58,6 +58,11 @@
 :global MsgPumpAlreadyStopped
 :global MsgTimeSinceStop
 
+# Переменные TimeUtils
+:global InputSeconds
+:global FormattedLog
+:global FormattedTelegram
+
 # Проверка инициализации системы
 :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
     :log warning "Насос - Запуск Nasos-Init"
@@ -105,29 +110,32 @@
                     /interface ethernet poe set $PoeMainInterface poe-out=off
                     :log warning "Насос - POE ФИЗИЧЕСКИ ОТКЛЮЧЕН"
                 
-                # Расчет времени работы насоса
+                # Расчет времени работы насоса с помощью TimeUtils
                 :local workTimeMsg ""
                 :if ([:len $PoeStartTime] > 0) do={
                     :local currentTime [/system clock get time]
+                    :log info ("Насос - TimeUtils: PoeStartTime=" . $PoeStartTime . ", currentTime=" . $currentTime)
                     :local startHours [:pick $PoeStartTime 0 2]
                     :local startMinutes [:pick $PoeStartTime 3 5]
                     :local startSecs [:pick $PoeStartTime 6 8]
-                    :local hoursToSecs ($startHours * 3600)
-                    :local minsToSecs ($startMinutes * 60)
-                    :local startSeconds ($hoursToSecs + $minsToSecs + $startSecs)
+                    :local startSeconds ($startHours * 3600 + $startMinutes * 60 + $startSecs)
                     :local currentHours [:pick $currentTime 0 2]
                     :local currentMins [:pick $currentTime 3 5]
                     :local currentSecs [:pick $currentTime 6 8]
-                    :local currentHoursToSecs ($currentHours * 3600)
-                    :local currentMinsToSecs ($currentMins * 60)
-                    :local currentSeconds ($currentHoursToSecs + $currentMinsToSecs + $currentSecs)
+                    :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
                     :local workSeconds ($currentSeconds - $startSeconds)
                     :if ($workSeconds < 0) do={
                         :set workSeconds ($workSeconds + 86400)
                     }
-                    :local workMinutes ($workSeconds / 60)
-                    :local workSecondsRem ($workSeconds - ($workMinutes * 60))
-                    :set workTimeMsg ($MsgTimeWorkedTemplate . [:tostr $workMinutes] . $MsgTimeMin . [:tostr $workSecondsRem] . $MsgTimeSec)
+                    :log info ("Насос - TimeUtils: Вычислено workSeconds=" . $workSeconds)
+                    
+                    # Использование TimeUtils для форматирования
+                    :set InputSeconds $workSeconds
+                    :log info ("Насос - TimeUtils: Установлено InputSeconds=" . $InputSeconds)
+                    /system script run Nasos-TimeUtils
+                    :log info ("Насос - TimeUtils: Результат FormattedLog=" . $FormattedLog)
+                    :set workTimeMsg (" " . $FormattedLog)
+                    :log info ("Насос - TimeUtils: Итоговое workTimeMsg=" . $workTimeMsg)
                 }
                 
                 # Сохранение времени остановки
@@ -140,25 +148,28 @@
                 :local telegramWorkMsg ""
                 :if ([:len $PoeStartTime] > 0) do={
                     :local currentTime [/system clock get time]
+                    :log info ("Насос - TimeUtils Telegram: PoeStartTime=" . $PoeStartTime . ", currentTime=" . $currentTime)
                     :local startHours [:pick $PoeStartTime 0 2]
                     :local startMinutes [:pick $PoeStartTime 3 5]
                     :local startSecs [:pick $PoeStartTime 6 8]
-                    :local hoursToSecs ($startHours * 3600)
-                    :local minsToSecs ($startMinutes * 60)
-                    :local startSeconds ($hoursToSecs + $minsToSecs + $startSecs)
+                    :local startSeconds ($startHours * 3600 + $startMinutes * 60 + $startSecs)
                     :local currentHours [:pick $currentTime 0 2]
                     :local currentMins [:pick $currentTime 3 5]
                     :local currentSecs [:pick $currentTime 6 8]
-                    :local currentHoursToSecs ($currentHours * 3600)
-                    :local currentMinsToSecs ($currentMins * 60)
-                    :local currentSeconds ($currentHoursToSecs + $currentMinsToSecs + $currentSecs)
+                    :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
                     :local workSeconds ($currentSeconds - $startSeconds)
                     :if ($workSeconds < 0) do={
                         :set workSeconds ($workSeconds + 86400)
                     }
-                    :local workMinutes ($workSeconds / 60)
-                    :local workSecondsRem ($workSeconds - ($workMinutes * 60))
-                    :set telegramWorkMsg ($MsgTimeAlreadyWorkedTranslit . [:tostr $workMinutes] . " minut " . [:tostr $workSecondsRem] . " sekund")
+                    :log info ("Насос - TimeUtils Telegram: Вычислено workSeconds=" . $workSeconds)
+                    
+                    # Использование TimeUtils для Telegram форматирования
+                    :set InputSeconds $workSeconds
+                    :log info ("Насос - TimeUtils Telegram: Установлено InputSeconds=" . $InputSeconds)
+                    /system script run Nasos-TimeUtils
+                    :log info ("Насос - TimeUtils Telegram: Результат FormattedTelegram=" . $FormattedTelegram)
+                    :set telegramWorkMsg ($MsgTimeAlreadyWorkedTranslit . $FormattedTelegram)
+                    :log info ("Насос - TimeUtils Telegram: Итоговое telegramWorkMsg=" . $telegramWorkMsg)
                 }
                 
                 # Отправка уведомления в Telegram

@@ -1,8 +1,8 @@
 # ===== NASOS TELEGRAM =====
 # Модуль обработки команд Telegram бота системы управления насосом
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
-# Дата создания: 15 июня 2025
-# Версия: 1.4
+# Дата создания: 19 декабря 2024
+# Версия: 1.5
 
 # Объявление глобальных переменных
 :global NasosInitStatus
@@ -43,15 +43,51 @@
 :global MsgTimeSec
 :global MsgNewLine
 
-# Проверка инициализации системы
-:if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
-    :log warning "Насос - Запуск Nasos-Init"
-    /system script run Nasos-Init
+# Импорт переменных для работы с POE интерфейсом
+:global MsgPumpOn
+:global MsgPumpOff
+
+# Переменные TimeUtils (на случай если понадобятся)
+:global InputSeconds
+:global FormattedLog
+:global FormattedTelegram
+
+# Надежная проверка инициализации системы с повторными попытками
+:local initAttempts 0
+:local maxInitAttempts 3
+:local initSuccess false
+
+:while (!$initSuccess && $initAttempts < $maxInitAttempts) do={
+    :set initAttempts ($initAttempts + 1)
+    :log warning ("Насос - Попытка инициализации #" . $initAttempts)
+    
+    # Проверка базовой инициализации
+    :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
+        :log warning "Насос - Запуск Nasos-Init"
+        /system script run Nasos-Init
+        :delay 2s
+    }
+    
+    # Проверка критичных переменных после инициализации
+    :if ([:len $BotToken] = 0 or [:len $ChatId] = 0 or [:len $PoeMainInterface] = 0) do={
+        :log error ("Насос - Попытка #" . $initAttempts . ": Критичные переменные не инициализированы")
+        :log error ("BotToken length: " . [:len $BotToken])
+        :log error ("ChatId length: " . [:len $ChatId]) 
+        :log error ("PoeMainInterface length: " . [:len $PoeMainInterface])
+        :if ($initAttempts < $maxInitAttempts) do={
+            :log warning "Насос - Повторная попытка инициализации через 3 секунды..."
+            :delay 3s
+        }
+    } else={
+        :set initSuccess true
+        :log info "Насос - Инициализация успешна!"
+    }
 }
 
-# Проверка обязательных переменных
-:if ([:len $BotToken] = 0 or [:len $ChatId] = 0) do={
-    :log error "Насос - КРИТИЧЕСКАЯ ОШИБКА: BotToken или ChatId не определены!"
+# Критическая ошибка если инициализация не удалась
+:if (!$initSuccess) do={
+    :log error "Насос - КРИТИЧЕСКАЯ ОШИБКА: Не удалось инициализировать систему после 3 попыток!"
+    :error "Initialization failed - check Nasos-Init.rsc and global variables"
 }
 
 # Инициализация счетчика циклов и настройка offset для Telegram API
@@ -75,11 +111,74 @@
     :log info ("Насос - Telegram продолжает работу с LastUpdateId: " . $LastUpdateId)
 }
 
-# Настройка меню Telegram бота
-:log info "Насос - Настройка меню Telegram бота..."
-:log warning "Насос - Запуск Nasos-SetMenu"
-/system script run Nasos-SetMenu
-:log info "Насос - Меню бота установлено успешно"
+# Функция для создания scheduler'а для изолированного выполнения команд
+:global createSafeScheduler do={
+    :local schedulerName $1
+    :local command $2
+    :local delaySeconds $3
+    
+    # Удаление существующего scheduler'а с таким именем
+    :if ([:len [/system scheduler find name=$schedulerName]] > 0) do={
+        /system scheduler remove [find name=$schedulerName]
+        :log info ("Насос - Удален существующий scheduler: " . $schedulerName)
+    }
+    
+    # Вычисление времени запуска (+delaySeconds)
+    :local now [/system clock get time]
+    :local hour [:tonum [:pick $now 0 2]]
+    :local min [:tonum [:pick $now 3 5]]
+    :local sec ([:tonum [:pick $now 6 8]] + $delaySeconds)
+    :if ($sec > 59) do={
+        :set sec ($sec - 60)
+        :set min ($min + 1)
+        :if ($min > 59) do={
+            :set min ($min - 60)
+            :set hour ($hour + 1)
+            :if ($hour > 23) do={ :set hour 0 }
+        }
+    }
+    
+    # Форматирование времени
+    :local hourStr [:tostr $hour]
+    :local minStr [:tostr $min] 
+    :local secStr [:tostr $sec]
+    :if ($hour < 10) do={ :set hourStr ("0" . $hour) }
+    :if ($min < 10) do={ :set minStr ("0" . $min) }
+    :if ($sec < 10) do={ :set secStr ("0" . $sec) }
+    :local startTime ($hourStr . ":" . $minStr . ":" . $secStr)
+    
+    # Создание scheduler'а
+    /system scheduler add name=$schedulerName interval=0 start-time=$startTime on-event=$command
+    :log info ("Насос - Создан scheduler: " . $schedulerName . " время: " . $startTime)
+}
+
+# Надежная настройка меню Telegram бота с проверками
+:local menuAttempts 0
+:local maxMenuAttempts 2
+:local menuSuccess false
+
+:while (!$menuSuccess && $menuAttempts < $maxMenuAttempts) do={
+    :set menuAttempts ($menuAttempts + 1)
+    :log info ("Насос - Попытка настройки меню #" . $menuAttempts)
+    
+    # Попытка запуска модуля настройки меню
+    :do {
+        /system script run Nasos-SetMenu
+        :delay 2s
+        :set menuSuccess true
+        :log info "Насос - Меню бота установлено успешно"
+    } on-error={
+        :log error ("Насос - Ошибка настройки меню, попытка #" . $menuAttempts)
+        :if ($menuAttempts < $maxMenuAttempts) do={
+            :delay 3s
+        }
+    }
+}
+
+# Если меню не удалось установить - продолжаем без него
+:if (!$menuSuccess) do={
+    :log warning "Насос - Не удалось установить меню - продолжаем без него"
+}
 
 # Запуск основного цикла мониторинга
 :log info "Насос - Запуск цикла мониторинга Telegram..."
@@ -118,38 +217,38 @@
         :set LastUpdateId ($newUpdateId + 1)
     }
     
-    # Обработка команды остановки насоса
+    # Обработка команды остановки насоса через изолированный scheduler
     :if ([:len [:find $content "\"text\":\"stop\""]] > 0 or [:len [:find $content "\"text\":\"/stop\""]] > 0) do={
-        :log warning "Насос - НАЙДЕНА КОМАНДА STOP - выполняется Nasos-Runner"
+        :log warning "Насос - НАЙДЕНА КОМАНДА STOP - создается изолированный scheduler"
         :set NewDuration 0
-        /system script run Nasos-Runner
+        [$createSafeScheduler "nasos-cmd-stop" ":global NewDuration; :set NewDuration 0; /system script run Nasos-Runner" 1]
     }
     
-    # Обработка команд запуска насоса на разное время
+    # Обработка команд запуска насоса на разное время через изолированные scheduler'ы
     :if ([:len [:find $content "\"text\":\"start 5\""]] > 0 or [:len [:find $content "\"text\":\"/start5\""]] > 0) do={
-        :log warning "Насос - НАЙДЕНА КОМАНДА START 5 - выполняется Nasos-Runner"
+        :log warning "Насос - НАЙДЕНА КОМАНДА START 5 - создается изолированный scheduler"
         :set NewDuration 300
-        /system script run Nasos-Runner
+        [$createSafeScheduler "nasos-cmd-start5" ":global NewDuration; :set NewDuration 300; /system script run Nasos-Runner" 1]
     }
     :if ([:len [:find $content "\"text\":\"start 10\""]] > 0 or [:len [:find $content "\"text\":\"/start10\""]] > 0) do={
-        :log warning "Насос - НАЙДЕНА КОМАНДА START 10 - выполняется Nasos-Runner"
+        :log warning "Насос - НАЙДЕНА КОМАНДА START 10 - создается изолированный scheduler"
         :set NewDuration 600
-        /system script run Nasos-Runner
+        [$createSafeScheduler "nasos-cmd-start10" ":global NewDuration; :set NewDuration 600; /system script run Nasos-Runner" 1]
     }
     :if ([:len [:find $content "\"text\":\"start 30\""]] > 0 or [:len [:find $content "\"text\":\"/start30\""]] > 0) do={
-        :log warning "Насос - НАЙДЕНА КОМАНДА START 30 - выполняется Nasos-Runner"
+        :log warning "Насос - НАЙДЕНА КОМАНДА START 30 - создается изолированный scheduler"
         :set NewDuration 1800
-        /system script run Nasos-Runner
+        [$createSafeScheduler "nasos-cmd-start30" ":global NewDuration; :set NewDuration 1800; /system script run Nasos-Runner" 1]
     }
     :if ([:len [:find $content "\"text\":\"start 60\""]] > 0 or [:len [:find $content "\"text\":\"/start60\""]] > 0) do={
-        :log warning "Насос - НАЙДЕНА КОМАНДА START 60 - выполняется Nasos-Runner"
+        :log warning "Насос - НАЙДЕНА КОМАНДА START 60 - создается изолированный scheduler"
         :set NewDuration 3600
-        /system script run Nasos-Runner
+        [$createSafeScheduler "nasos-cmd-start60" ":global NewDuration; :set NewDuration 3600; /system script run Nasos-Runner" 1]
     }
     :if ([:len [:find $content "\"text\":\"start 120\""]] > 0 or [:len [:find $content "\"text\":\"/start120\""]] > 0) do={
-        :log warning "Насос - НАЙДЕНА КОМАНДА START 120 - выполняется Nasos-Runner"
+        :log warning "Насос - НАЙДЕНА КОМАНДА START 120 - создается изолированный scheduler"
         :set NewDuration 7200
-        /system script run Nasos-Runner
+        [$createSafeScheduler "nasos-cmd-start120" ":global NewDuration; :set NewDuration 7200; /system script run Nasos-Runner" 1]
     }
     
     # Обработка команды показа меню
@@ -247,7 +346,7 @@
                 :set statusText ($statusText . $MsgStatusLastStopUnknown . $MsgNewLine)
             }
         }
-        /tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $statusText) keep-result=no
+#        /tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $statusText) keep-result=no
     }
     :delay 4s
 } 
