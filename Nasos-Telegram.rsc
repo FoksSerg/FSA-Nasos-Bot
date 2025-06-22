@@ -62,12 +62,12 @@
     :log warning ("Насос - Попытка инициализации #" . $initAttempts)
     
     # Проверка базовой инициализации
-    :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
-        :log warning "Насос - Запуск Nasos-Init"
-        /system script run Nasos-Init
+:if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
+    :log warning "Насос - Запуск Nasos-Init"
+    /system script run Nasos-Init
         :delay 2s
-    }
-    
+}
+
     # Проверка критичных переменных после инициализации
     :if ([:len $BotToken] = 0 or [:len $ChatId] = 0 or [:len $PoeMainInterface] = 0) do={
         :log error ("Насос - Попытка #" . $initAttempts . ": Критичные переменные не инициализированы")
@@ -163,10 +163,10 @@
     
     # Попытка запуска модуля настройки меню
     :do {
-        /system script run Nasos-SetMenu
+/system script run Nasos-SetMenu
         :delay 2s
         :set menuSuccess true
-        :log info "Насос - Меню бота установлено успешно"
+:log info "Насос - Меню бота установлено успешно"
     } on-error={
         :log error ("Насос - Ошибка настройки меню, попытка #" . $menuAttempts)
         :if ($menuAttempts < $maxMenuAttempts) do={
