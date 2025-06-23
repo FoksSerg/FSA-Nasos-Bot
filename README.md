@@ -1017,7 +1017,7 @@ INFO: Насос - Offset установлен: 12345
 ### 📧 Контакты:
 - **Автор:** Сергей Фокин
 - **Email:** foks_serg@mail.ru
-- **GitHub:** [NasosRunner](https://github.com/FoksSerg/NasosRunner)
+- **GitHub:** [NasosRunner](https://github.com/FoksSerg/FSA-Nasos-Bot)
 
 ### ❓ FAQ:
 
@@ -1086,7 +1086,7 @@ SOFTWARE.
 
 **🎯 NasosRunner v4.0 - Критическая защита и универсальные команды**
 
-[![Made with ❤️](https://img.shields.io/badge/Made%20with-❤️-red.svg)](https://github.com/FoksSerg/NasosRunner)
+[![Made with ❤️](https://img.shields.io/badge/Made%20with-❤️-red.svg)](https://github.com/FoksSerg/FSA-Nasos-Bot)
 [![RouterOS](https://img.shields.io/badge/Powered%20by-RouterOS-blue.svg)](https://mikrotik.com/)
 [![Modular](https://img.shields.io/badge/Architecture-Modular-green.svg)](#)
 
