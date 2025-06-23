@@ -2,19 +2,17 @@
 # Активатор действий с Telegram API через scheduler
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
 # Дата создания: 22 июня 2025
-# Версия: 1.0
+# Версия: 1.2 - Добавлены действия "poll" и "process" для отказоустойчивой архитектуры
 
 # Объявление глобальных переменных
 :global TgAction
 :global TgMessage
 :global TgCleanupTime
 
-:log warning "TG-Activator: Запуск активатора Telegram"
-
 # Проверка наличия параметров
 :if ([:len $TgAction] = 0 && [:len $TgMessage] = 0) do={
     :log error "TG-Activator: Не заданы параметры для активации (TgAction или TgMessage)"
-    :log info "TG-Activator: Использование: :global TgAction \"send|clear|set\"; :global TgMessage \"текст\""
+    :log info "TG-Activator: Использование: :global TgAction \"send|clear|set|poll|process\"; :global TgMessage \"текст\""
     :log info "TG-Activator: Завершение работы без выполнения действий"
 } else={
     # Определение действия по умолчанию
@@ -68,6 +66,12 @@
             :set actionValid 0
         }
     }
+    :if ($action = "poll") do={
+        :set targetScript "Nasos-TG-Poller"
+    }
+    :if ($action = "process") do={
+        :set targetScript "Nasos-TG-CommandProcessor"
+    }
 
     # Проверка корректности действия
     :if ([:len $targetScript] = 0 && $actionValid = 1) do={
@@ -87,7 +91,6 @@
             :if ($schedAge > 300) do={
                 :local oldName [/system scheduler get $i name]
                 /system scheduler remove $i
-                :log warning ("TG-Activator: Удален старый scheduler: " . $oldName)
             }
         }
 
@@ -113,23 +116,18 @@
         
         # Форматирование времени
         :local startTime ([:tostr $hours] . ":" . [:tostr $minutes] . ":" . [:tostr $seconds])
-        :log info ("TG-Activator: Время запуска scheduler: " . $startTime)
 
         # Создание команды для scheduler
         :local schedCommand ("/system script run " . $targetScript)
 
         # Создание scheduler с конкретным временем запуска
-        :log info ("TG-Activator: Создание scheduler: " . $schedName)
         /system scheduler add name=$schedName start-time=$startTime interval=0 on-event=$schedCommand
 
         # Создание cleanup scheduler для автоудаления
         :local cleanupSchedName ($schedName . "-cleanup")
         :local cleanupCommand ("/system scheduler remove [find name=" . $schedName . "]; /system scheduler remove [find name=" . $cleanupSchedName . "]")
 
-        :log info ("TG-Activator: Создание cleanup scheduler: " . $cleanupSchedName . " (удаление через " . $cleanupTime . "s)")
         /system scheduler add name=$cleanupSchedName start-time=$startTime interval=$cleanupTime on-event=$cleanupCommand
-
-        :log info ("TG-Activator: Активация завершена. Scheduler " . $schedName . " запустится в " . $startTime)
     } else={
         :log error "TG-Activator: Активация прервана из-за ошибки"
         # Очистка переменных только при ошибке
@@ -138,5 +136,3 @@
         :set TgCleanupTime ""
     }
 }
-
-:log info "TG-Activator: Завершение работы активатора" 

@@ -51,9 +51,17 @@
 # Функция преобразования времени в секунды
 :global timeToSeconds do={
     :local timeStr $1
+    # Защита от пустых значений
+    :if ([:typeof $timeStr] = "nothing" || [:len $timeStr] = 0 || [:len $timeStr] < 8) do={
+        :return 0
+    }
     :local hours [:pick $timeStr 0 2]
     :local minutes [:pick $timeStr 3 5]
     :local seconds [:pick $timeStr 6 8]
+    # Защита от нечисловых значений
+    :if ([:typeof [:tonum $hours]] = "nothing" || [:typeof [:tonum $minutes]] = "nothing" || [:typeof [:tonum $seconds]] = "nothing") do={
+        :return 0
+    }
     :return ($hours * 3600 + $minutes * 60 + $seconds)
 }
 
@@ -255,26 +263,32 @@
                             :local newInterval ($newIntervalHours . ":" . $newIntervalMins . ":" . $newIntervalSecsRem)
                             # Обновление таймера
                             /system scheduler set [find name=$PoeActiveTimer] interval=$newInterval
-                            # Расчет уменьшенного времени для отчета
+                            # Расчет уменьшенного времени для отчета через TimeUtils
                             :local reducedSecs (0 - $NewDuration)
-                            :local reducedMinutes ($reducedSecs / 60)
-                            :local reducedSecondsRem ($reducedSecs - ($reducedMinutes * 60))
-                            :local totalMinutes ($newTotalSeconds / 60)
-                            :local totalSecondsRem ($newTotalSeconds - ($totalMinutes * 60))
-                            :local workMinutes ($workSeconds / 60)
-                            :local workSecondsRem ($workSeconds - ($workMinutes * 60))
-                            # Формирование сообщений
-                            :local msg1 ($MsgTimeReduced . " " . $reducedMinutes . $MsgTimeMin . $reducedSecondsRem . $MsgTimeSec)
-                            :local msg2 ($MsgNewLine . $MsgTimeWorked . $workMinutes . $MsgTimeMin . $workSecondsRem . $MsgTimeSec)
-                            :local msg3 ($MsgTimeExpectedTotal . " " . $totalMinutes . $MsgTimeMin . $totalSecondsRem . $MsgTimeSec)
-                            :local fullMsg ($msg1 . $msg2)
-                            :log warning $fullMsg
-                            :log warning $msg3
+                            
+                            # Форматирование уменьшенного времени через TimeUtils
+                            :set InputSeconds $reducedSecs
+                            /system script run Nasos-TimeUtils
+                            :local reducedTimeFormatted $FormattedTelegram
+                            
+                            # Форматирование времени работы через TimeUtils
+                            :set InputSeconds $workSeconds
+                            /system script run Nasos-TimeUtils
+                            :local workTimeFormatted $FormattedTelegram
+                            
+                            # Форматирование общего времени через TimeUtils
+                            :set InputSeconds $newTotalSeconds
+                            /system script run Nasos-TimeUtils
+                            :local totalTimeFormatted $FormattedTelegram
+                            
+                            # Логирование
+                            :log warning ($MsgTimeReduced . " " . $reducedTimeFormatted)
+                            :log warning ($MsgTimeExpectedTotal . " " . $totalTimeFormatted)
+                            
                             # Отправка уведомлений в Telegram
-                            :local telegramWorkMsg ($MsgTimeAlreadyWorkedTranslit . [:tostr $workMinutes] . " minut " . [:tostr $workSecondsRem] . " sekund")
-                            :local telegramMsg ($MsgTimeReduced . " " . $reducedMinutes . $MsgTimeMin . $reducedSecondsRem . $MsgTimeSec . $telegramWorkMsg)
+                            :local telegramMsg ($MsgTimeReduced . " " . $reducedTimeFormatted . $MsgNewLine . $MsgTimeWorkedHeader . " " . $workTimeFormatted)
                             $sendTelegram $BotToken $ChatId $telegramMsg
-                            :local telegramTotalMsg ($MsgTimeExpectedTotal . " " . $totalMinutes . $MsgTimeMin . $totalSecondsRem . $MsgTimeSec)
+                            :local telegramTotalMsg ($MsgTimeExpectedTotal . " " . $totalTimeFormatted)
                             $sendTelegram $BotToken $ChatId $telegramTotalMsg
                             :set NewDuration ""
                         }

@@ -25,6 +25,9 @@
 
 # Переменные сообщений (основные)
 :global MsgSysStarted
+:global MsgSysError
+:global MsgEmergencyShutdown
+:global MsgEmergencyReason
 :global MsgMenuHeader
 :global MsgNewLine
 :global MsgHeader
@@ -46,6 +49,14 @@
 :global InputSeconds
 :global FormattedTelegram
 
+# Переменные нового опроса API
+:global TgLastCommand
+:global TgCommandTime
+:global TgPollStatus
+:global TgPollError
+:global TgPollHeartbeat
+:global TgStartMinutes
+
 # Переменные команд меню
 :global MsgMenuStop
 :global MsgMenuStatus
@@ -59,9 +70,17 @@
 # === ФУНКЦИЯ РАСЧЕТА ВРЕМЕНИ ===
 :global timeToSeconds do={
     :local timeStr $1
+    # Защита от пустых значений
+    :if ([:typeof $timeStr] = "nothing" || [:len $timeStr] = 0 || [:len $timeStr] < 8) do={
+        :return 0
+    }
     :local hours [:pick $timeStr 0 2]
     :local minutes [:pick $timeStr 3 5]
     :local seconds [:pick $timeStr 6 8]
+    # Защита от нечисловых значений
+    :if ([:typeof [:tonum $hours]] = "nothing" || [:typeof [:tonum $minutes]] = "nothing" || [:typeof [:tonum $seconds]] = "nothing") do={
+        :return 0
+    }
     :return ($hours * 3600 + $minutes * 60 + $seconds)
 }
 
@@ -143,55 +162,128 @@
 
 :set TgAction "send"
 :set TgMessage $welcomeMsg
-/system script run Nasos-TG-Activator
+:do {
+    /system script run Nasos-TG-Activator
+} on-error={
+    :log warning "Насос - Ошибка отправки приветствия"
+}
 :delay 1s
 
-:log info "Насос - Запуск основного цикла мониторинга..."
-
-# === ОСНОВНОЙ ЦИКЛ МОНИТОРИНГА ===
+# === ОТКАЗОУСТОЙЧИВЫЙ ЦИКЛ МОНИТОРИНГА ===
 :local loopCounter 0
-
 :while (true) do={
     :set loopCounter ($loopCounter + 1)
     
     # Обновление heartbeat
     :set TelegramHeartbeat [/system clock get time]
     
-    # Получение обновлений от Telegram
-    :local getUrl ("https://api.telegram.org/bot" . $BotToken . "/getUpdates?limit=5&offset=" . $LastUpdateId)
-    :local updates [/tool fetch url=$getUrl as-value output=user]
-    :local content ($updates->"data")
-    
-    # Обработка только если есть контент
-    :if ([:len $content] > 10) do={
-        
-        # Обновление offset
-        :local updateIdPos [:find $content "\"update_id\":"]
-        :if ([:len $updateIdPos] > 0) do={
-            :local idStart ($updateIdPos + 12)
-            :local idEnd [:find $content "," $idStart]
-            :local newUpdateId [:pick $content $idStart $idEnd]
-            :set LastUpdateId ($newUpdateId + 1)
+    # КРИТИЧЕСКАЯ ПРОВЕРКА: Насос не должен работать без автостопа!
+    :local poeStatus [/interface ethernet poe get $PoeMainInterface poe-out]
+    :if ($poeStatus = "auto-on" || $poeStatus = "forced-on") do={
+        :if ([:len $PoeActiveTimer] = 0 || [:len [/system scheduler find name=$PoeActiveTimer]] = 0) do={
+            :log error "КРИТИЧНО: Насос работает без автостопа - принудительное отключение!"
+            
+            # Немедленное отключение насоса
+            /interface ethernet poe set $PoeMainInterface poe-out=off
+            
+            # Расчет времени работы для отчета
+            :local emergencyWorkSeconds 0
+            :if ([:len $PoeStartTime] > 0) do={
+                :local currentTime [/system clock get time]
+                :local startSeconds [$timeToSeconds $PoeStartTime]
+                :local currentSeconds [$timeToSeconds $currentTime]
+                
+                :if ($startSeconds >= 0 && $currentSeconds >= 0) do={
+                    :set emergencyWorkSeconds ($currentSeconds - $startSeconds)
+                    :if ($emergencyWorkSeconds < 0) do={
+                        :set emergencyWorkSeconds ($emergencyWorkSeconds + 86400)
+                    }
+                }
+            }
+            
+            # Сохранение данных об аварийной остановке
+            :set LastStopTime [/system clock get time]
+            :set LastWorkDuration $emergencyWorkSeconds
+            :set PoeStartTime ""
+            :set PoeActiveTimer ""
+            
+            # Отправка критического уведомления
+            :local emergencyMsg ($MsgSysError . $MsgEmergencyShutdown . $MsgNewLine . $MsgEmergencyReason)
+            :if ($emergencyWorkSeconds > 0) do={
+                :set InputSeconds $emergencyWorkSeconds
+                :do {
+                    /system script run Nasos-TimeUtils
+                    :set emergencyMsg ($emergencyMsg . $MsgNewLine . $MsgTimeWorkedHeader . " " . $FormattedTelegram)
+                } on-error={}
+            }
+            
+            # Немедленная отправка уведомления
+            :set TgAction "send"
+            :set TgMessage $emergencyMsg
+            :do {
+                /system script run Nasos-TG-Activator
+            } on-error={}
         }
+    }
+    
+    # Безопасный опрос API через TG-Activator
+    :set TgAction "poll"
+    :do {
+        /system script run Nasos-TG-Activator
+    } on-error={
+        :log warning "Насос - Ошибка запуска TG-Activator"
+        :set TgPollStatus "error"
+        :set TgPollError "Ошибка запуска активатора"
+    }
+    :delay 1s
+    
+    # Проверка наличия команды для обработки
+    :if ([:len $TgLastCommand] > 0 && $TgPollStatus = "ok") do={
         
         # === ОБРАБОТКА КОМАНД ===
-        
+       
+        # Универсальная команда START с поддержкой положительных, отрицательных и нулевых значений
+        :if ($TgLastCommand = "start") do={
+            :local minutes $TgStartMinutes
+            # Защита от пустых или некорректных значений
+            :if ([:typeof $minutes] = "nothing" || [:typeof $minutes] != "num") do={
+                :log warning "Ошибка: некорректное значение минут"
+                :set TgLastCommand ""
+            } else={
+                :if ($minutes = 0) do={
+                    :log warning "СТОП (через start0)"
+                    :set NewDuration 0
+                } else={
+                    :if ($minutes > 0) do={
+                        :log warning ("СТАРТ " . $minutes . " мин")
+                    } else={
+                        :log warning ("УМЕНЬШЕНИЕ на " . ($minutes * -1) . " мин")
+                    }
+                    :set NewDuration ($minutes * 60)
+                }
+                :do {
+                    /system script run Nasos-Runner
+                } on-error={
+                    :log warning "Ошибка запуска Runner"
+                }
+                :set TgLastCommand ""
+            }
+        }
+       
         # Команда STOP
-        :if ([:len [:find $content "\"/stop\""]] > 0 || [:len [:find $content "\"stop\""]] > 0) do={
-            :log warning "Насос - Команда STOP получена"
+        :if ($TgLastCommand = "stop") do={
+            :log warning "СТОП"
             :set NewDuration 0
             /system script run Nasos-Runner
+            :set TgLastCommand ""
         }
         
         # Команда STATUS
-        :if ([:len [:find $content "\"/status\""]] > 0 || [:len [:find $content "\"status\""]] > 0) do={
-            :log info "Насос - Команда STATUS получена"
-            
+        :if ($TgLastCommand = "status") do={
             # Проверка и исправление неправильного формата LastStopTime
             :if ([:len $LastStopTime] > 8) do={
                 :set LastStopTime ""
             }
-            
             # Проверка текущего состояния POE порта
             :local poeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
             :local currentTime [/system clock get time]
@@ -204,19 +296,28 @@
                 # Расчет времени работы
                 :local workSeconds 0
                 :if ([:len $PoeStartTime] > 0) do={
-                    # Расчет разности времени через функцию
+                    # Расчет разности времени через функцию с защитой
                     :local startSeconds [$timeToSeconds $PoeStartTime]
                     :local currentSeconds [$timeToSeconds $currentTime]
                     
-                    :set workSeconds ($currentSeconds - $startSeconds)
-                    :if ($workSeconds < 0) do={
-                        :set workSeconds ($workSeconds + 86400)
+                    # Защита от некорректных значений времени
+                    :if ($startSeconds >= 0 && $currentSeconds >= 0) do={
+                        :set workSeconds ($currentSeconds - $startSeconds)
+                        :if ($workSeconds < 0) do={
+                            :set workSeconds ($workSeconds + 86400)
+                        }
+                        
+                        # Используем TimeUtils для форматирования с защитой
+                        :if ($workSeconds >= 0) do={
+                            :set InputSeconds $workSeconds
+                            :do {
+                                /system script run Nasos-TimeUtils
+                                :set statusText ($statusText . $MsgStatusWorkingTime . $FormattedTelegram . $MsgNewLine)
+                            } on-error={
+                                :set statusText ($statusText . $MsgStatusWorkingTime . "ошибка расчета" . $MsgNewLine)
+                            }
+                        }
                     }
-                    
-                    # Используем TimeUtils для форматирования
-                    :set InputSeconds $workSeconds
-                    /system script run Nasos-TimeUtils
-                    :set statusText ($statusText . $MsgStatusWorkingTime . $FormattedTelegram . $MsgNewLine)
                 }
                 
                 # Проверка таймера автостопа
@@ -224,33 +325,45 @@
                     :local timerInterval [/system scheduler get [find name=$PoeActiveTimer] interval]
                     :local totalSeconds [$timeToSeconds $timerInterval]
                     
-                    # Расчет оставшегося времени через ExpectedStopTime
+                    # Расчет оставшегося времени через ExpectedStopTime с защитой
                     :local remainingSeconds 0
                     :if ([:len $ExpectedStopTime] > 0) do={
                         :local currentTime [/system clock get time]
                         :local currentSeconds [$timeToSeconds $currentTime]
                         :local stopSeconds [$timeToSeconds $ExpectedStopTime]
                         
-                        :set remainingSeconds ($stopSeconds - $currentSeconds)
-                        :if ($remainingSeconds < 0) do={
-                            :set remainingSeconds ($remainingSeconds + 86400)
-                        }
-                        :if ($remainingSeconds > 86400) do={
-                            :set remainingSeconds 0
+                        # Защита от некорректных значений
+                        :if ($currentSeconds >= 0 && $stopSeconds >= 0) do={
+                            :set remainingSeconds ($stopSeconds - $currentSeconds)
+                            :if ($remainingSeconds < 0) do={
+                                :set remainingSeconds ($remainingSeconds + 86400)
+                            }
+                            :if ($remainingSeconds > 86400) do={
+                                :set remainingSeconds 0
+                            }
                         }
                     }
 
-                    
                     :if ($remainingSeconds > 0) do={
                         :set InputSeconds $remainingSeconds
-                        /system script run Nasos-TimeUtils
-                        :set statusText ($statusText . $MsgStatusTimeLeft . $FormattedTelegram . $MsgNewLine)
+                        :do {
+                            /system script run Nasos-TimeUtils
+                            :set statusText ($statusText . $MsgStatusTimeLeft . $FormattedTelegram . $MsgNewLine)
+                        } on-error={
+                            :set statusText ($statusText . $MsgStatusTimeLeft . "ошибка расчета" . $MsgNewLine)
+                        }
                         
                         # Ожидаемое общее время = текущее время работы + оставшееся время
                         :local expectedTotalSeconds ($workSeconds + $remainingSeconds)
-                        :set InputSeconds $expectedTotalSeconds
-                        /system script run Nasos-TimeUtils
-                        :set statusText ($statusText . $MsgTimeExpectedTotal . " " . $FormattedTelegram . $MsgNewLine)
+                        :if ($expectedTotalSeconds >= 0) do={
+                            :set InputSeconds $expectedTotalSeconds
+                            :do {
+                                /system script run Nasos-TimeUtils
+                                :set statusText ($statusText . $MsgTimeExpectedTotal . " " . $FormattedTelegram . $MsgNewLine)
+                            } on-error={
+                                :set statusText ($statusText . $MsgTimeExpectedTotal . " ошибка расчета" . $MsgNewLine)
+                            }
+                        }
                     } else={
                         :set statusText ($statusText . $MsgStatusTimerExpired . $MsgNewLine)
                     }
@@ -266,89 +379,76 @@
                     :local stopSeconds [$timeToSeconds $LastStopTime]
                     :local currentSeconds [$timeToSeconds $currentTime]
                     
-                    :local stopDiffSeconds ($currentSeconds - $stopSeconds)
-                    :if ($stopDiffSeconds < 0) do={
-                        :set stopDiffSeconds ($stopDiffSeconds + 86400)
+                    # Защита от некорректных значений
+                    :if ($stopSeconds >= 0 && $currentSeconds >= 0) do={
+                        :local stopDiffSeconds ($currentSeconds - $stopSeconds)
+                        :if ($stopDiffSeconds < 0) do={
+                            :set stopDiffSeconds ($stopDiffSeconds + 86400)
+                        }
+                        
+                        # Используем TimeUtils для форматирования с защитой
+                        :if ($stopDiffSeconds >= 0) do={
+                            :set InputSeconds $stopDiffSeconds
+                            :do {
+                                /system script run Nasos-TimeUtils
+                                :set statusText ($statusText . $MsgNewLine . $MsgStatusStoppedTime . $FormattedTelegram . $MsgStatusTimeAgo)
+                            } on-error={
+                                :set statusText ($statusText . $MsgNewLine . $MsgStatusStoppedTime . "ошибка расчета" . $MsgStatusTimeAgo)
+                            }
+                        }
+                    } else={
+                        :set statusText ($statusText . $MsgNewLine . $MsgStatusLastStopUnknown)
                     }
-                    
-                    # Используем TimeUtils для форматирования
-                    :set InputSeconds $stopDiffSeconds
-                    /system script run Nasos-TimeUtils
-                    :set statusText ($statusText . $MsgNewLine . $MsgStatusStoppedTime . $FormattedTelegram . $MsgStatusTimeAgo)
                 } else={
                     :set statusText ($statusText . $MsgNewLine . $MsgStatusLastStopUnknown)
                 }
                 
                 # Показ времени последней работы (показываем вторым)
                 :if ([:typeof $LastWorkDuration] = "num" && $LastWorkDuration > 0) do={
-                    # Используем TimeUtils для форматирования времени работы
+                    # Используем TimeUtils для форматирования времени работы с защитой
                     :set InputSeconds $LastWorkDuration
-                    /system script run Nasos-TimeUtils
-                    :set statusText ($statusText . $MsgNewLine . $MsgTimeWorkedHeader . " " . $FormattedTelegram . $MsgNewLine)
-                    :log info ("Насос - STATUS: Добавлена строка времени работы: " . $FormattedTelegram)
+                    :do {
+                        /system script run Nasos-TimeUtils
+                        :set statusText ($statusText . $MsgNewLine . $MsgTimeWorkedHeader . " " . $FormattedTelegram . $MsgNewLine)
+                    } on-error={
+                        :set statusText ($statusText . $MsgNewLine . $MsgTimeWorkedHeader . " ошибка расчета" . $MsgNewLine)
+                    }
                 } else={
-                    :log warning ("Насос - STATUS: Время работы НЕ добавлено - нет данных или некорректное значение")
                     :set statusText ($statusText . $MsgNewLine)
                 }
             }
-            
             # Отправка статуса через диспетчер
             :set TgAction "send"
             :set TgMessage $statusText
-            /system script run Nasos-TG-Activator
+            :do {
+                /system script run Nasos-TG-Activator
+            } on-error={
+                :log warning "Насос - Ошибка отправки STATUS"
+            }
+            :set TgLastCommand ""
         }
         
-                 # Команда MENU
-         :if ([:len [:find $content "\"/menu\""]] > 0 || [:len [:find $content "\"menu\""]] > 0) do={
-             :log info "Насос - Команда MENU получена"
-             :local menuMsg ($MsgMenuHeader . $MsgNewLine . $MsgNewLine . $MsgMenuStop . $MsgNewLine . $MsgMenuStatus . $MsgNewLine . $MsgMenuShow . $MsgNewLine . $MsgNewLine . $MsgMenuStart5 . $MsgNewLine . $MsgMenuStart10 . $MsgNewLine . $MsgMenuStart30 . $MsgNewLine . $MsgMenuStart60 . $MsgNewLine . $MsgMenuStart120)
-             
-             :set TgAction "send"
-             :set TgMessage $menuMsg
-             /system script run Nasos-TG-Activator
-         }
-        
-        # Команды запуска START5
-        :if ([:len [:find $content "\"/start5\""]] > 0 || [:len [:find $content "\"start 5\""]] > 0) do={
-            :log warning "Насос - Команда START5 получена"
-            :set NewDuration 300
-            /system script run Nasos-Runner
+        # Команда MENU
+        :if ($TgLastCommand = "menu") do={
+            :local menuMsg ($MsgMenuHeader . $MsgNewLine . $MsgNewLine . $MsgMenuStop . $MsgNewLine . $MsgMenuStatus . $MsgNewLine . $MsgMenuShow . $MsgNewLine . $MsgNewLine . $MsgMenuStart5 . $MsgNewLine . $MsgMenuStart10 . $MsgNewLine . $MsgMenuStart30 . $MsgNewLine . $MsgMenuStart60 . $MsgNewLine . $MsgMenuStart120)
+            :set TgAction "send"
+            :set TgMessage $menuMsg
+            :do {
+                /system script run Nasos-TG-Activator
+            } on-error={
+                :log warning "Насос - Ошибка отправки MENU"
+            }
+            :set TgLastCommand ""
         }
         
-        # Команды запуска START10
-        :if ([:len [:find $content "\"/start10\""]] > 0 || [:len [:find $content "\"start 10\""]] > 0) do={
-            :log warning "Насос - Команда START10 получена"
-            :set NewDuration 600
-            /system script run Nasos-Runner
-        }
+
         
-        # Команды запуска START30
-        :if ([:len [:find $content "\"/start30\""]] > 0 || [:len [:find $content "\"start 30\""]] > 0) do={
-            :log warning "Насос - Команда START30 получена"
-            :set NewDuration 1800
-            /system script run Nasos-Runner
-        }
-        
-        # Команды запуска START60
-        :if ([:len [:find $content "\"/start60\""]] > 0 || [:len [:find $content "\"start 60\""]] > 0) do={
-            :log warning "Насос - Команда START60 получена"
-            :set NewDuration 3600
-            /system script run Nasos-Runner
-        }
-        
-        # Команды запуска START120
-        :if ([:len [:find $content "\"/start120\""]] > 0 || [:len [:find $content "\"start 120\""]] > 0) do={
-            :log warning "Насос - Команда START120 получена"
-            :set NewDuration 7200
-            /system script run Nasos-Runner
-        }
-        
-        # Логирование каждого 50-го цикла для мониторинга
-        :if (($loopCounter % 50) = 0) do={
-            :log info ("Насос - Цикл #" . $loopCounter . ", heartbeat: " . $TelegramHeartbeat)
+    } else={
+        # Обработка ошибок API или отсутствия команд
+        :if ($TgPollStatus = "error") do={
+            :log warning ("Насос - Ошибка API: " . $TgPollError)
         }
     }
-    
     # Пауза между циклами
     :delay 4s
 }
