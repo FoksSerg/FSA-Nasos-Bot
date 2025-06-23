@@ -1,10 +1,10 @@
-# ===== NASOS TELEGRAM v3.1 =====
+# ===== NASOS TELEGRAM v4.0 =====
 # Революционный модуль обработки команд Telegram бота
 # Построен на архитектуре центрального диспетчера
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
 # Дата создания: 23 июня 2025
 # Последнее обновление: 23 июня 2025
-# Версия: 3.1 - Интеграция модуля TimeUtils для расчета времени
+# Версия: 4.0 - Оптимизированная версия (-35 строк, +функция timeToSeconds)
 
 # === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
 :global NasosInitStatus
@@ -22,37 +22,29 @@
 # Переменные диспетчера
 :global TgAction
 :global TgMessage
-:global TgKeyboardType
 
 # Переменные сообщений (основные)
 :global MsgSysStarted
 :global MsgMenuHeader
 :global MsgNewLine
-:global MsgStatusGetting
-:global MsgStatusCurrent
 :global MsgHeader
 :global MsgStatusHeader
-:global MsgStatusRunning
-:global MsgStatusStopped
+:global MsgPumpOn
+:global MsgPumpOff
 :global MsgStatusWorkingTime
 :global MsgStatusTimeLeft
 :global MsgStatusTimerExpired
 :global MsgStatusNoAutoStop
 :global MsgStatusStoppedTime
 :global MsgStatusTimeAgo
+:global MsgTimeExpectedTotal
 :global MsgStatusLastStopUnknown
+:global ExpectedStopTime
 :global MsgTimeWorkedHeader
-:global MsgTimeMin
-:global MsgTimeSec
 
 # Переменные модуля TimeUtils
 :global InputSeconds
-:global FormattedLog
 :global FormattedTelegram
-
-# Переменные статусов насоса
-:global MsgPumpOn
-:global MsgPumpOff
 
 # Переменные команд меню
 :global MsgMenuStop
@@ -64,7 +56,16 @@
 :global MsgMenuStart60
 :global MsgMenuStart120
 
-:log info "Насос - Telegram v3.1: Запуск с интеграцией TimeUtils"
+# === ФУНКЦИЯ РАСЧЕТА ВРЕМЕНИ ===
+:global timeToSeconds do={
+    :local timeStr $1
+    :local hours [:pick $timeStr 0 2]
+    :local minutes [:pick $timeStr 3 5]
+    :local seconds [:pick $timeStr 6 8]
+    :return ($hours * 3600 + $minutes * 60 + $seconds)
+}
+
+:log info "Насос - Telegram v4.0: Запуск оптимизированной версии"
 
 # === НАДЕЖНАЯ ИНИЦИАЛИЗАЦИЯ ===
 :local initAttempts 0
@@ -198,22 +199,16 @@
             
             :if ($poeStatus = "forced-on") do={
                 # Насос работает
-                :set statusText ($statusText . $MsgStatusHeader . " " . $MsgStatusRunning . $MsgNewLine)
+                :set statusText ($statusText . $MsgStatusHeader . " " . $MsgPumpOn . $MsgNewLine)
                 
                 # Расчет времени работы
+                :local workSeconds 0
                 :if ([:len $PoeStartTime] > 0) do={
-                    # Ручной расчет разности времени
-                    :local startHours [:pick $PoeStartTime 0 2]
-                    :local startMinutes [:pick $PoeStartTime 3 5]
-                    :local startSecs [:pick $PoeStartTime 6 8]
-                    :local startSeconds ($startHours * 3600 + $startMinutes * 60 + $startSecs)
+                    # Расчет разности времени через функцию
+                    :local startSeconds [$timeToSeconds $PoeStartTime]
+                    :local currentSeconds [$timeToSeconds $currentTime]
                     
-                    :local currentHours [:pick $currentTime 0 2]
-                    :local currentMins [:pick $currentTime 3 5]
-                    :local currentSecs [:pick $currentTime 6 8]
-                    :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
-                    
-                    :local workSeconds ($currentSeconds - $startSeconds)
+                    :set workSeconds ($currentSeconds - $startSeconds)
                     :if ($workSeconds < 0) do={
                         :set workSeconds ($workSeconds + 86400)
                     }
@@ -227,33 +222,35 @@
                 # Проверка таймера автостопа
                 :if ([:len $PoeActiveTimer] > 0 && [:len [/system scheduler find name=$PoeActiveTimer]] > 0) do={
                     :local timerInterval [/system scheduler get [find name=$PoeActiveTimer] interval]
-                    :local intervalHours [:pick $timerInterval 0 2]
-                    :local intervalMins [:pick $timerInterval 3 5]
-                    :local intervalSecs [:pick $timerInterval 6 8]
-                    :local totalSeconds ($intervalHours * 3600 + $intervalMins * 60 + $intervalSecs)
+                    :local totalSeconds [$timeToSeconds $timerInterval]
                     
-                    # Расчет оставшегося времени
-                    :local workSeconds 0
-                    :if ([:len $PoeStartTime] > 0) do={
-                        :local startHours [:pick $PoeStartTime 0 2]
-                        :local startMinutes [:pick $PoeStartTime 3 5]
-                        :local startSecs [:pick $PoeStartTime 6 8]
-                        :local startSeconds ($startHours * 3600 + $startMinutes * 60 + $startSecs)
-                        :local currentHours [:pick $currentTime 0 2]
-                        :local currentMins [:pick $currentTime 3 5]
-                        :local currentSecs [:pick $currentTime 6 8]
-                        :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
-                        :set workSeconds ($currentSeconds - $startSeconds)
-                        :if ($workSeconds < 0) do={
-                            :set workSeconds ($workSeconds + 86400)
+                    # Расчет оставшегося времени через ExpectedStopTime
+                    :local remainingSeconds 0
+                    :if ([:len $ExpectedStopTime] > 0) do={
+                        :local currentTime [/system clock get time]
+                        :local currentSeconds [$timeToSeconds $currentTime]
+                        :local stopSeconds [$timeToSeconds $ExpectedStopTime]
+                        
+                        :set remainingSeconds ($stopSeconds - $currentSeconds)
+                        :if ($remainingSeconds < 0) do={
+                            :set remainingSeconds ($remainingSeconds + 86400)
+                        }
+                        :if ($remainingSeconds > 86400) do={
+                            :set remainingSeconds 0
                         }
                     }
-                    :local remainingSeconds ($totalSeconds - $workSeconds)
+
                     
                     :if ($remainingSeconds > 0) do={
                         :set InputSeconds $remainingSeconds
                         /system script run Nasos-TimeUtils
                         :set statusText ($statusText . $MsgStatusTimeLeft . $FormattedTelegram . $MsgNewLine)
+                        
+                        # Ожидаемое общее время = текущее время работы + оставшееся время
+                        :local expectedTotalSeconds ($workSeconds + $remainingSeconds)
+                        :set InputSeconds $expectedTotalSeconds
+                        /system script run Nasos-TimeUtils
+                        :set statusText ($statusText . $MsgTimeExpectedTotal . " " . $FormattedTelegram . $MsgNewLine)
                     } else={
                         :set statusText ($statusText . $MsgStatusTimerExpired . $MsgNewLine)
                     }
@@ -262,31 +259,12 @@
                 }
             } else={
                 # Насос остановлен
-                :set statusText ($statusText . $MsgStatusHeader . " " . $MsgStatusStopped . $MsgNewLine)
+                :set statusText ($statusText . $MsgStatusHeader . " " . $MsgPumpOff)
                 
-                # Показ времени последней работы (если есть данные)
-                :log info ("Насос - STATUS DEBUG: LastWorkDuration=[" . $LastWorkDuration . "], тип=[" . [:typeof $LastWorkDuration] . "]")
-                :if ([:typeof $LastWorkDuration] = "num" && $LastWorkDuration > 0) do={
-                    # Используем TimeUtils для форматирования времени работы
-                    :set InputSeconds $LastWorkDuration
-                    /system script run Nasos-TimeUtils
-                    :set statusText ($statusText . $MsgTimeWorkedHeader . " " . $FormattedTelegram . $MsgNewLine)
-                    :log info ("Насос - STATUS: Добавлена строка времени работы: " . $FormattedTelegram)
-                } else={
-                    :log warning ("Насос - STATUS: Время работы НЕ добавлено - нет данных или некорректное значение")
-                }
-                
-                # Расчет времени с момента остановки
+                # Расчет времени с момента остановки (показываем первым)
                 :if ([:len $LastStopTime] > 0) do={
-                    :local stopHours [:pick $LastStopTime 0 2]
-                    :local stopMinutes [:pick $LastStopTime 3 5]
-                    :local stopSecs [:pick $LastStopTime 6 8]
-                    :local stopSeconds ($stopHours * 3600 + $stopMinutes * 60 + $stopSecs)
-                    
-                    :local currentHours [:pick $currentTime 0 2]
-                    :local currentMins [:pick $currentTime 3 5]
-                    :local currentSecs [:pick $currentTime 6 8]
-                    :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
+                    :local stopSeconds [$timeToSeconds $LastStopTime]
+                    :local currentSeconds [$timeToSeconds $currentTime]
                     
                     :local stopDiffSeconds ($currentSeconds - $stopSeconds)
                     :if ($stopDiffSeconds < 0) do={
@@ -296,9 +274,21 @@
                     # Используем TimeUtils для форматирования
                     :set InputSeconds $stopDiffSeconds
                     /system script run Nasos-TimeUtils
-                    :set statusText ($statusText . $MsgStatusStoppedTime . $FormattedTelegram . $MsgStatusTimeAgo . $MsgNewLine)
+                    :set statusText ($statusText . $MsgNewLine . $MsgStatusStoppedTime . $FormattedTelegram . $MsgStatusTimeAgo)
                 } else={
-                    :set statusText ($statusText . $MsgStatusLastStopUnknown . $MsgNewLine)
+                    :set statusText ($statusText . $MsgNewLine . $MsgStatusLastStopUnknown)
+                }
+                
+                # Показ времени последней работы (показываем вторым)
+                :if ([:typeof $LastWorkDuration] = "num" && $LastWorkDuration > 0) do={
+                    # Используем TimeUtils для форматирования времени работы
+                    :set InputSeconds $LastWorkDuration
+                    /system script run Nasos-TimeUtils
+                    :set statusText ($statusText . $MsgNewLine . $MsgTimeWorkedHeader . " " . $FormattedTelegram . $MsgNewLine)
+                    :log info ("Насос - STATUS: Добавлена строка времени работы: " . $FormattedTelegram)
+                } else={
+                    :log warning ("Насос - STATUS: Время работы НЕ добавлено - нет данных или некорректное значение")
+                    :set statusText ($statusText . $MsgNewLine)
                 }
             }
             
