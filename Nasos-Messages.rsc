@@ -2,7 +2,8 @@
 # Модуль сообщений для Telegram бота системы управления насосом
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
 # Дата создания: 15 июня 2025
-# Версия: 1.4
+# Последнее обновление: 23 июня 2025
+# Версия: 1.7 - Интеграция TimeUtils в шаблон автостопа
 
 # ===== NASOS TELEGRAM BOT MESSAGES =====
 
@@ -76,6 +77,10 @@
 # Заголовок меню
 # 🖥️ Доступные команды:
 :global MsgMenuHeader "%F0%9F%96%A5%EF%B8%8F%20%D0%94%D0%BE%D1%81%D1%82%D1%83%D0%BF%D0%BD%D1%8B%D0%B5%20%D0%BA%D0%BE%D0%BC%D0%B0%D0%BD%D0%B4%D1%8B%3A"
+
+# Сообщения процессов
+# 📊 Получение статуса системы...
+:global MsgStatusGetting "%F0%9F%93%8A%20%D0%9F%D0%BE%D0%BB%D1%83%D1%87%D0%B5%D0%BD%D0%B8%D0%B5%20%D1%81%D1%82%D0%B0%D1%82%D1%83%D1%81%D0%B0%20%D1%81%D0%B8%D1%81%D1%82%D0%B5%D0%BC%D1%8B..."
 
 # Команды управления
 # 🔴 Остановить насос
@@ -173,15 +178,31 @@
 :global MsgTimeWorked;\r\
 :global MsgTimeMin;\r\
 :global MsgTimeSec;\r\
+:global InputSeconds;\r\
+:global FormattedTelegram;\r\
+:global LastWorkDuration;\r\
 :local telegramWorkMsg \"\";\r\
 :if ([:len \$PoeStartTime] > 0) do {\r\
-    :local workSeconds ([:timestamp] - \$PoeStartTime);\r\
-    :local workMinutes ((\$workSeconds - (\$workSeconds % 60)) / 60);\r\
-    :local workSecondsRem (\$workSeconds % 60);\r\
-    :set telegramWorkMsg (\$MsgNewLine . \$MsgTimeWorked . [:tostr \$workMinutes] . \$MsgTimeMin . [:tostr \$workSecondsRem] . \$MsgTimeSec);\r\
+    :local currentTime [/system clock get time];\r\
+    :local startHours [:pick \$PoeStartTime 0 2];\r\
+    :local startMinutes [:pick \$PoeStartTime 3 5];\r\
+    :local startSecs [:pick \$PoeStartTime 6 8];\r\
+    :local startSeconds (\$startHours * 3600 + \$startMinutes * 60 + \$startSecs);\r\
+    :local currentHours [:pick \$currentTime 0 2];\r\
+    :local currentMins [:pick \$currentTime 3 5];\r\
+    :local currentSecs [:pick \$currentTime 6 8];\r\
+    :local currentSeconds (\$currentHours * 3600 + \$currentMins * 60 + \$currentSecs);\r\
+    :local workSeconds (\$currentSeconds - \$startSeconds);\r\
+    :if (\$workSeconds < 0) do {\r\
+        :set workSeconds (\$workSeconds + 86400);\r\
+    }\r\
+    :set InputSeconds \$workSeconds;\r\
+    /system script run Nasos-TimeUtils;\r\
+    :set telegramWorkMsg (\$MsgNewLine . \$MsgTimeWorked . \$FormattedTelegram);\r\
+    :set LastWorkDuration \$workSeconds;\r\
 }\r\
 /interface ethernet set [find name=\$PoeMainInterface] poe-out=off;\r\
-:set LastStopTime [:timestamp];\r\
+:set LastStopTime [/system clock get time];\r\
 :local telegramMsg (\$MsgSysStarted . \$MsgNewLine . \$MsgStatusCurrent . \$MsgNewLine . \$MsgPumpAutoStop . \$telegramWorkMsg);\r\
 /tool fetch url=(\"https://api.telegram.org/bot\" . \$BotToken . \"/sendMessage\") http-method=post http-data=(\"chat_id=\" . \$ChatId . \"&text=\" . \$telegramMsg) keep-result=no;\r\
 /system scheduler remove [find name=\$PoeTimerName];\r\
