@@ -2,7 +2,8 @@
 # Основной модуль управления POE насосом через Telegram бота
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
 # Дата создания: 19 декабря 2024
-# Версия: 1.5
+# Дата оптимизации: 23 июня 2025
+# Версия: 2.0 - Оптимизированная версия (-84 строки, +функция timeToSeconds)
 # Объявление глобальных переменных
 :global NasosInitStatus
 :global BotToken
@@ -16,34 +17,17 @@
 :global LastWorkDuration
 :global MsgSysStarted
 :global MsgSysError
-:global MsgSysWarning
 :global MsgPumpOn
-:global MsgPumpOff
 :global MsgPumpAlreadyOn
-:global MsgPumpStopped
 :global MsgPumpAutoStop
-:global MsgPumpManualStop
 :global MsgPumpStoppedByCmd
 :global MsgPumpStoppedTimeReduced
 :global MsgTimeWorked
-:global MsgTimeWillWork
-:global MsgTimeTotal
 :global MsgTimeMin
 :global MsgTimeSec
 :global MsgTimeReduced
-:global MsgMenuHeader
-:global MsgMenuStop
-:global MsgMenuStatus
-:global MsgMenuStart5
-:global MsgMenuStart10
-:global MsgMenuStart30
-:global MsgMenuStart60
-:global MsgMenuStart120
-:global MsgMenuShow
-:global MsgStatusRunning
-:global MsgStatusStopped
 :global MsgStatusCurrent
-:global MsgSysReboot
+:global ExpectedStopTime
 :global MsgTimeWorkedTemplate
 :global MsgTimeAlreadyWorkedTemplate
 :global MsgTimeAlreadyWorkedTranslit
@@ -51,17 +35,28 @@
 :global MsgHeader
 :global MsgStatusHeader
 :global MsgTimeRemaining
-:global MsgTimeExtension
 :global MsgTimeExpectedTotal
 :global MsgTimeWorkedHeader
+:global MsgTimeStoppedAt
 :global MsgPumpStartedFor
 :global MsgStopCmdTemplate
 :global MsgPumpAlreadyStopped
 :global MsgTimeSinceStop
+:global MsgErrorNoActiveTimer
 # Переменные TimeUtils
 :global InputSeconds
 :global FormattedLog
 :global FormattedTelegram
+
+# Функция преобразования времени в секунды
+:global timeToSeconds do={
+    :local timeStr $1
+    :local hours [:pick $timeStr 0 2]
+    :local minutes [:pick $timeStr 3 5]
+    :local seconds [:pick $timeStr 6 8]
+    :return ($hours * 3600 + $minutes * 60 + $seconds)
+}
+
 # Проверка инициализации системы
 :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
     :log warning "Насос - Запуск Nasos-Init"
@@ -86,7 +81,6 @@
 } else={
     # Отладочная информация о текущем статусе POE
     :local currentPoeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
-    :log warning ("Насос - ОТЛАДКА: Текущий статус POE при запуске = [" . $currentPoeStatus . "]")
     # Проверка наличия команды на выполнение
     :if ([:len $NewDuration] = 0) do={
         :log info "Насос - Длительность не установлена"
@@ -96,7 +90,6 @@
             :local poeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
             # Команда остановки насоса (NewDuration = 0)
             :if ($NewDuration = 0) do={
-                :log warning ("Насос - ОТЛАДКА: Текущий статус POE = [" . $poeStatus . "]")
                 # Проверка текущего статуса POE перед отключением
                 :if ($poeStatus != "off") do={
                     # Физическое отключение POE
@@ -106,27 +99,16 @@
                 :local workTimeMsg ""
                 :if ([:len $PoeStartTime] > 0) do={
                     :local currentTime [/system clock get time]
-                    :log info ("Насос - TimeUtils: PoeStartTime=" . $PoeStartTime . ", currentTime=" . $currentTime)
-                    :local startHours [:pick $PoeStartTime 0 2]
-                    :local startMinutes [:pick $PoeStartTime 3 5]
-                    :local startSecs [:pick $PoeStartTime 6 8]
-                    :local startSeconds ($startHours * 3600 + $startMinutes * 60 + $startSecs)
-                    :local currentHours [:pick $currentTime 0 2]
-                    :local currentMins [:pick $currentTime 3 5]
-                    :local currentSecs [:pick $currentTime 6 8]
-                    :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
+                    :local startSeconds [$timeToSeconds $PoeStartTime]
+                    :local currentSeconds [$timeToSeconds $currentTime]
                     :local workSeconds ($currentSeconds - $startSeconds)
                     :if ($workSeconds < 0) do={
                         :set workSeconds ($workSeconds + 86400)
                     }
-                    :log info ("Насос - TimeUtils: Вычислено workSeconds=" . $workSeconds)
                     # Использование TimeUtils для форматирования
                     :set InputSeconds $workSeconds
-                    :log info ("Насос - TimeUtils: Установлено InputSeconds=" . $InputSeconds)
                     /system script run Nasos-TimeUtils
-                    :log info ("Насос - TimeUtils: Результат FormattedLog=" . $FormattedLog)
                     :set workTimeMsg (" " . $FormattedLog)
-                    :log info ("Насос - TimeUtils: Итоговое workTimeMsg=" . $workTimeMsg)
                 }
                 # Сохранение времени остановки
                 :set LastStopTime [/system clock get time]
@@ -137,35 +119,23 @@
                 :local telegramWorkMsg ""
                 :if ([:len $PoeStartTime] > 0) do={
                     :local currentTime [/system clock get time]
-                    :log info ("Насос - TimeUtils Telegram: PoeStartTime=" . $PoeStartTime . ", currentTime=" . $currentTime)
-                    :local startHours [:pick $PoeStartTime 0 2]
-                    :local startMinutes [:pick $PoeStartTime 3 5]
-                    :local startSecs [:pick $PoeStartTime 6 8]
-                    :local startSeconds ($startHours * 3600 + $startMinutes * 60 + $startSecs)
-                    :local currentHours [:pick $currentTime 0 2]
-                    :local currentMins [:pick $currentTime 3 5]
-                    :local currentSecs [:pick $currentTime 6 8]
-                    :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
+                    :local startSeconds [$timeToSeconds $PoeStartTime]
+                    :local currentSeconds [$timeToSeconds $currentTime]
                     :local workSeconds ($currentSeconds - $startSeconds)
                     :if ($workSeconds < 0) do={
                         :set workSeconds ($workSeconds + 86400)
                     }
-                    :log info ("Насос - TimeUtils Telegram: Вычислено workSeconds=" . $workSeconds)
                     # Использование TimeUtils для Telegram форматирования
                     :set InputSeconds $workSeconds
-                    :log info ("Насос - TimeUtils Telegram: Установлено InputSeconds=" . $InputSeconds)
                     /system script run Nasos-TimeUtils
-                    :log info ("Насос - TimeUtils Telegram: Результат FormattedTelegram=" . $FormattedTelegram)
                     :set telegramWorkMsg ($MsgTimeWorkedHeader . " " . $FormattedTelegram)
-                    :log info ("Насос - TimeUtils Telegram: Итоговое telegramWorkMsg=" . $telegramWorkMsg)
                     # Сохранение длительности работы
                     :set LastWorkDuration $workSeconds
-                    :log info ("Насос - Сохранена длительность работы: " . $LastWorkDuration . " сек.")
                 }
                 # Получение времени остановки
                 :local stopTime [/system clock get time]
                 # Отправка уведомления в Telegram
-                :local telegramMsg ($MsgStatusHeader . " " . $MsgPumpStoppedByCmd . $MsgNewLine . $telegramWorkMsg . $MsgNewLine . "%F0%9F%95%90%20%D0%9E%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%BB%D0%B5%D0%BD%20%D0%B2%3A%20" . $stopTime)
+                :local telegramMsg ($MsgStatusHeader . " " . $MsgPumpStoppedByCmd . $MsgNewLine . $telegramWorkMsg . $MsgNewLine . $MsgTimeStoppedAt . $stopTime)
                 $sendTelegram $BotToken $ChatId $telegramMsg
                 # Удаление активного таймера
                 :if ([:len $PoeActiveTimer] > 0) do={
@@ -189,14 +159,8 @@
                     :local timeSinceStopMsg ""
                     :if ([:len $LastStopTime] > 0) do={
                         :local currentTime [/system clock get time]
-                        :local stopHours [:pick $LastStopTime 0 2]
-                        :local stopMinutes [:pick $LastStopTime 3 5]
-                        :local stopSecs [:pick $LastStopTime 6 8]
-                        :local stopSeconds ($stopHours * 3600 + $stopMinutes * 60 + $stopSecs)
-                        :local currentHours [:pick $currentTime 0 2]
-                        :local currentMins [:pick $currentTime 3 5]
-                        :local currentSecs [:pick $currentTime 6 8]
-                        :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
+                        :local stopSeconds [$timeToSeconds $LastStopTime]
+                        :local currentSeconds [$timeToSeconds $currentTime]
                         :local timeSinceStop ($currentSeconds - $stopSeconds)
                         :if ($timeSinceStop < 0) do={
                             :set timeSinceStop ($timeSinceStop + 86400)
@@ -206,7 +170,7 @@
                         :set timeSinceStopMsg ($MsgTimeSinceStop . " " . [:tostr $stopMinutes] . $MsgTimeMin . [:tostr $stopSecondsRem] . $MsgTimeSec)
                     }
                     :log warning ("Насос - НАСОС УЖЕ ОТКЛЮЧЕН" . $timeSinceStopMsg)
-                    :local telegramMsg ($MsgHeader . $MsgNewLine . $MsgStatusHeader . $MsgNewLine . $MsgPumpAlreadyStopped . $timeSinceStopMsg)
+                    :local telegramMsg ($MsgHeader . $MsgNewLine . $MsgStatusHeader . " " . $MsgPumpAlreadyStopped . $MsgNewLine . $timeSinceStopMsg)
                     $sendTelegram $BotToken $ChatId $telegramMsg
                     # Очистка переменной команды
                     :set NewDuration ""
@@ -225,14 +189,8 @@
                         :local workSeconds 0
                         :if ([:len $PoeStartTime] > 0) do={
                             :local currentTime [/system clock get time]
-                            :local startHours [:pick $PoeStartTime 0 2]
-                            :local startMinutes [:pick $PoeStartTime 3 5]
-                            :local startSecs [:pick $PoeStartTime 6 8]
-                            :local startSeconds ($startHours * 3600 + $startMinutes * 60 + $startSecs)
-                            :local currentHours [:pick $currentTime 0 2]
-                            :local currentMins [:pick $currentTime 3 5]
-                            :local currentSecs [:pick $currentTime 6 8]
-                            :local currentSeconds ($currentHours * 3600 + $currentMins * 60 + $currentSecs)
+                            :local startSeconds [$timeToSeconds $PoeStartTime]
+                            :local currentSeconds [$timeToSeconds $currentTime]
                             :set workSeconds ($currentSeconds - $startSeconds)
                             :if ($workSeconds < 0) do={
                                 :set workSeconds ($workSeconds + 86400)
@@ -247,18 +205,8 @@
                             :local workTimeMsg ""
                             :if ([:len $PoeStartTime] > 0) do={
                                 :local currentTime [/system clock get time]
-                                :local startHours [:pick $PoeStartTime 0 2]
-                                :local startMinutes [:pick $PoeStartTime 3 5]
-                                :local startSecs [:pick $PoeStartTime 6 8]
-                                :local hoursToSecs2 ($startHours * 3600)
-                                :local minsToSecs2 ($startMinutes * 60)
-                                :local startSeconds ($hoursToSecs2 + $minsToSecs2 + $startSecs)
-                                :local currentHours [:pick $currentTime 0 2]
-                                :local currentMins [:pick $currentTime 3 5]
-                                :local currentSecs [:pick $currentTime 6 8]
-                                :local currentHoursToSecs2 ($currentHours * 3600)
-                                :local currentMinsToSecs2 ($currentMins * 60)
-                                :local currentSeconds ($currentHoursToSecs2 + $currentMinsToSecs2 + $currentSecs)
+                                :local startSeconds [$timeToSeconds $PoeStartTime]
+                                :local currentSeconds [$timeToSeconds $currentTime]
                                 :local workSeconds ($currentSeconds - $startSeconds)
                                 :if ($workSeconds < 0) do={
                                     :set workSeconds ($workSeconds + 86400)
@@ -272,7 +220,6 @@
                             :set LastStopTime [/system clock get time]
                             # Сохранение длительности работы
                             :set LastWorkDuration $workSeconds
-                            :log info ("Насос - Сохранена длительность работы при уменьшении времени: " . $LastWorkDuration . " сек.")
                             :local logMsg "Насос - НАСОС ОСТАНОВЛЕН - время уменьшено"
                             :set logMsg ($logMsg . $workTimeMsg)
                             :log warning $logMsg
@@ -334,7 +281,7 @@
                     } else={
                         # Ошибка - нет активного таймера
                         :log error "Насос - Нет активного таймера"
-                        $sendTelegram $BotToken $ChatId ($MsgSysStarted . $MsgNewLine . $MsgSysError . "%D0%9D%D0%B5%D1%82%20%D0%B0%D0%BA%D1%82%D0%B8%D0%B2%D0%BD%D0%BE%D0%B3%D0%BE%20%D1%82%D0%B0%D0%B9%D0%BC%D0%B5%D1%80%D0%B0")
+                        $sendTelegram $BotToken $ChatId ($MsgSysStarted . $MsgNewLine . $MsgSysError . $MsgErrorNoActiveTimer)
                         :set NewDuration ""
                     }
                 } else={
@@ -353,18 +300,8 @@
                             :local workSeconds 0
                             :if ([:len $PoeStartTime] > 0) do={
                                 :local currentTime [/system clock get time]
-                                :local startHours [:pick $PoeStartTime 0 2]
-                                :local startMinutes [:pick $PoeStartTime 3 5]
-                                :local startSecs [:pick $PoeStartTime 6 8]
-                                :local hoursToSecs3 ($startHours * 3600)
-                                :local minsToSecs3 ($startMinutes * 60)
-                                :local startSeconds ($hoursToSecs3 + $minsToSecs3 + $startSecs)
-                                :local currentHours [:pick $currentTime 0 2]
-                                :local currentMins [:pick $currentTime 3 5]
-                                :local currentSecs [:pick $currentTime 6 8]
-                                :local currentHoursToSecs3 ($currentHours * 3600)
-                                :local currentMinsToSecs3 ($currentMins * 60)
-                                :local currentSeconds ($currentHoursToSecs3 + $currentMinsToSecs3 + $currentSecs)
+                                :local startSeconds [$timeToSeconds $PoeStartTime]
+                                :local currentSeconds [$timeToSeconds $currentTime]
                                 :set workSeconds ($currentSeconds - $startSeconds)
                                 :if ($workSeconds < 0) do={
                                     :set workSeconds ($workSeconds + 86400)
@@ -408,11 +345,23 @@
                                     :log warning ("Насос - Удален старый таймер: " . $PoeActiveTimer)
                                 }
                             }
+                            # Расчет ожидаемого времени остановки
+                            :local currentTime [/system clock get time]
+                            :local currentSeconds [$timeToSeconds $currentTime]
+                            :local stopSeconds (($currentSeconds + $NewDuration) % 86400)
+                            :local stopHours ($stopSeconds / 3600)
+                            :local stopMins (($stopSeconds - ($stopHours * 3600)) / 60)
+                            :local stopSecsRem ($stopSeconds - ($stopHours * 3600) - ($stopMins * 60))
+                            :if ($stopHours < 10) do={ :set stopHours ("0" . $stopHours) }
+                            :if ($stopMins < 10) do={ :set stopMins ("0" . $stopMins) }
+                            :if ($stopSecsRem < 10) do={ :set stopSecsRem ("0" . $stopSecsRem) }
+                            :set ExpectedStopTime ($stopHours . ":" . $stopMins . ":" . $stopSecsRem)
+                            
                             # Создание нового таймера
                             :local timerName $PoeTimerName
                             /system scheduler add name=$timerName interval=$newInterval on-event=$MsgStopCmdTemplate
                             :set PoeActiveTimer $timerName
-                            :log warning ("Насос - Создан новый таймер: " . $timerName . " с интервалом: " . $newInterval)
+                            :log warning ("Насос - Создан новый таймер: " . $timerName . " с интервалом: " . $newInterval . ", ожидаемая остановка: " . $ExpectedStopTime)
                         } else={
                             # Запуск насоса
                             /interface ethernet set [find name=$PoeMainInterface] poe-out=forced-on
@@ -420,7 +369,7 @@
                             :local logMsg ("Насос - НАСОС ЗАПУЩЕН на " . $durationMinutes . " минут " . $durationSeconds . " секунд")
                             :log warning $logMsg
                             # Отправка уведомления о запуске (используем TimeUtils)
-                            :local telegramMsg ($MsgHeader . $MsgNewLine . $MsgStatusHeader . $MsgNewLine . $MsgPumpStartedFor . " " . $durationFormatted)
+                            :local telegramMsg ($MsgHeader . $MsgNewLine . $MsgStatusHeader . " " . $MsgPumpOn . $MsgNewLine . $MsgPumpStartedFor . " " . $durationFormatted)
                             $sendTelegram $BotToken $ChatId $telegramMsg
                             # Создание таймера остановки
                             :local intervalHours ($NewDuration / 3600)
@@ -437,11 +386,23 @@
                                     :log warning ("Насос - Удален старый таймер: " . $PoeActiveTimer)
                                 }
                             }
+                            # Расчет ожидаемого времени остановки
+                            :local currentTime [/system clock get time]
+                            :local currentSeconds [$timeToSeconds $currentTime]
+                            :local stopSeconds (($currentSeconds + $NewDuration) % 86400)
+                            :local stopHours ($stopSeconds / 3600)
+                            :local stopMins (($stopSeconds - ($stopHours * 3600)) / 60)
+                            :local stopSecsRem ($stopSeconds - ($stopHours * 3600) - ($stopMins * 60))
+                            :if ($stopHours < 10) do={ :set stopHours ("0" . $stopHours) }
+                            :if ($stopMins < 10) do={ :set stopMins ("0" . $stopMins) }
+                            :if ($stopSecsRem < 10) do={ :set stopSecsRem ("0" . $stopSecsRem) }
+                            :set ExpectedStopTime ($stopHours . ":" . $stopMins . ":" . $stopSecsRem)
+                            
                             # Создание нового таймера
                             :local timerName $PoeTimerName
                             /system scheduler add name=$timerName interval=$schedulerInterval on-event=$MsgStopCmdTemplate
                             :set PoeActiveTimer $timerName
-                            :log warning ("Насос - Создан новый таймер: " . $timerName . " с интервалом: " . $schedulerInterval)
+                            :log warning ("Насос - Создан новый таймер: " . $timerName . " с интервалом: " . $schedulerInterval . ", ожидаемая остановка: " . $ExpectedStopTime)
                         }
                         # Очистка команды
                         :set NewDuration ""

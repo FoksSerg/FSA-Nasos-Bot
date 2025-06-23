@@ -3,7 +3,8 @@
 # ВНИМАНИЕ: Это шаблон! Скопируйте в Nasos-Init.rsc и настройте токены
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
 # Дата создания: 15 июня 2025
-# Версия: 1.4
+# Дата изменения: 23 июня 2025
+# Версия: 1.5
 
 # Основные переменные системы
 :global NasosInitStatus false
@@ -24,6 +25,7 @@
 :global TelegramHeartbeat
 :global LastUpdateId
 :global LastStopTime
+:global ExpectedStopTime
 :global MsgSysPoeDisabled
 
 # Инициализация модуля сообщений
@@ -61,6 +63,7 @@
 
 # Сброс переменных состояния
 :set PoeActiveTimer ""
+:set ExpectedStopTime ""
 :if ($cleanedCount > 0) do={
     :log warning ("Насос - Очистка таймеров завершена. Удалено: " . $cleanedCount)
 }
