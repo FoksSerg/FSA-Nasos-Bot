@@ -4,7 +4,7 @@
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
 # Дата создания: 23 июня 2025
 # Последнее обновление: 23 июня 2025
-# Версия: 4.0 - Оптимизированная версия (-35 строк, +функция timeToSeconds)
+# Версия: 4.1 - Исправлено форматирование STATUS, добавлена защита от висящих таймеров
 
 # === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
 :global NasosInitStatus
@@ -204,8 +204,15 @@
             # Сохранение данных об аварийной остановке
             :set LastStopTime [/system clock get time]
             :set LastWorkDuration $emergencyWorkSeconds
-            :set PoeStartTime ""
+                            :set PoeStartTime ""
+                :set ExpectedStopTime ""
             :set PoeActiveTimer ""
+            
+            # Принудительное удаление таймера по фиксированному имени
+            :if ([:len [/system scheduler find name=$PoeTimerName]] > 0) do={
+                /system scheduler remove [find name=$PoeTimerName]
+                :log warning ("Насос - Принудительно удален таймер при аварийном отключении: " . $PoeTimerName)
+            }
             
             # Отправка критического уведомления
             :local emergencyMsg ($MsgSysError . $MsgEmergencyShutdown . $MsgNewLine . $MsgEmergencyReason)
@@ -291,7 +298,7 @@
             
             :if ($poeStatus = "forced-on") do={
                 # Насос работает
-                :set statusText ($statusText . $MsgStatusHeader . " " . $MsgPumpOn . $MsgNewLine)
+                :set statusText ($statusText . $MsgStatusHeader . " " . $MsgPumpOn)
                 
                 # Расчет времени работы
                 :local workSeconds 0
@@ -312,9 +319,9 @@
                             :set InputSeconds $workSeconds
                             :do {
                                 /system script run Nasos-TimeUtils
-                                :set statusText ($statusText . $MsgStatusWorkingTime . $FormattedTelegram . $MsgNewLine)
+                                :set statusText ($statusText . $MsgNewLine . $MsgStatusWorkingTime . $FormattedTelegram)
                             } on-error={
-                                :set statusText ($statusText . $MsgStatusWorkingTime . "ошибка расчета" . $MsgNewLine)
+                                :set statusText ($statusText . $MsgNewLine . $MsgStatusWorkingTime . "ошибка расчета")
                             }
                         }
                     }
@@ -348,9 +355,9 @@
                         :set InputSeconds $remainingSeconds
                         :do {
                             /system script run Nasos-TimeUtils
-                            :set statusText ($statusText . $MsgStatusTimeLeft . $FormattedTelegram . $MsgNewLine)
+                            :set statusText ($statusText . $MsgNewLine . $MsgStatusTimeLeft . $FormattedTelegram)
                         } on-error={
-                            :set statusText ($statusText . $MsgStatusTimeLeft . "ошибка расчета" . $MsgNewLine)
+                            :set statusText ($statusText . $MsgNewLine . $MsgStatusTimeLeft . "ошибка расчета")
                         }
                         
                         # Ожидаемое общее время = текущее время работы + оставшееся время
@@ -359,16 +366,16 @@
                             :set InputSeconds $expectedTotalSeconds
                             :do {
                                 /system script run Nasos-TimeUtils
-                                :set statusText ($statusText . $MsgTimeExpectedTotal . " " . $FormattedTelegram . $MsgNewLine)
+                                :set statusText ($statusText . $MsgNewLine . $MsgTimeExpectedTotal . " " . $FormattedTelegram)
                             } on-error={
-                                :set statusText ($statusText . $MsgTimeExpectedTotal . " ошибка расчета" . $MsgNewLine)
+                                :set statusText ($statusText . $MsgNewLine . $MsgTimeExpectedTotal . " ошибка расчета")
                             }
                         }
                     } else={
-                        :set statusText ($statusText . $MsgStatusTimerExpired . $MsgNewLine)
+                        :set statusText ($statusText . $MsgNewLine . $MsgStatusTimerExpired)
                     }
                 } else={
-                    :set statusText ($statusText . $MsgStatusNoAutoStop . $MsgNewLine)
+                    :set statusText ($statusText . $MsgNewLine . $MsgStatusNoAutoStop)
                 }
             } else={
                 # Насос остановлен
@@ -409,12 +416,10 @@
                     :set InputSeconds $LastWorkDuration
                     :do {
                         /system script run Nasos-TimeUtils
-                        :set statusText ($statusText . $MsgNewLine . $MsgTimeWorkedHeader . " " . $FormattedTelegram . $MsgNewLine)
+                        :set statusText ($statusText . $MsgNewLine . $MsgTimeWorkedHeader . " " . $FormattedTelegram)
                     } on-error={
-                        :set statusText ($statusText . $MsgNewLine . $MsgTimeWorkedHeader . " ошибка расчета" . $MsgNewLine)
+                        :set statusText ($statusText . $MsgNewLine . $MsgTimeWorkedHeader . " ошибка расчета")
                     }
-                } else={
-                    :set statusText ($statusText . $MsgNewLine)
                 }
             }
             # Отправка статуса через диспетчер

@@ -3,8 +3,8 @@
 # ВНИМАНИЕ: Это шаблон! Скопируйте в Nasos-Init.rsc и настройте токены
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
 # Дата создания: 15 июня 2025
-# Дата изменения: 23 июня 2025
-# Версия: 1.5
+# Дата изменения: 24 июня 2025
+# Версия: 1.7 - Синхронизация с основным модулем после исправления ExpectedStopTime
 
 # Основные переменные системы
 :global NasosInitStatus false
@@ -20,7 +20,7 @@
 # Переменные состояния системы
 :global PoeActiveTimer
 :global PoeStartTime
-:global PoeTimerName "nasos-poe-timer"
+:global PoeTimerName "Nasos-POE-Timer"
 :global NewDuration
 :global TelegramHeartbeat
 :global LastUpdateId
@@ -45,28 +45,15 @@
     /tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $MsgSysPoeDisabled) keep-result=no
 }
 
-# Очистка старых таймеров при инициализации
-:local cleanedCount 0
-# Поиск и удаление таймеров POE
-:foreach timer in=[/system scheduler find where name~"poe-timer"] do={
-    :local timerName [/system scheduler get $timer name]
-    /system scheduler remove $timer
-    :set cleanedCount ($cleanedCount + 1)
-    :log warning ("Насос - Удален старый таймер: " . $timerName)
-}
-# Удаление основного таймера насоса
+# Очистка таймера при инициализации
 :if ([:len [/system scheduler find name=$PoeTimerName]] > 0) do={
     /system scheduler remove [find name=$PoeTimerName]
-    :set cleanedCount ($cleanedCount + 1)
     :log warning ("Насос - Удален таймер: " . $PoeTimerName)
 }
 
 # Сброс переменных состояния
 :set PoeActiveTimer ""
 :set ExpectedStopTime ""
-:if ($cleanedCount > 0) do={
-    :log warning ("Насос - Очистка таймеров завершена. Удалено: " . $cleanedCount)
-}
 
 # Установка флага успешной инициализации
 :set NasosInitStatus true
