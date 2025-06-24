@@ -96,12 +96,12 @@
     :log warning ("Насос - Инициализация попытка #" . $initAttempts)
     
     # Запуск инициализации если нужно
-    :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
-        :log warning "Насос - Запуск Nasos-Init"
-        /system script run Nasos-Init
+:if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
+    :log warning "Насос - Запуск Nasos-Init"
+    /system script run Nasos-Init
         :delay 2s
-    }
-    
+}
+
     # Проверка критичных переменных
     :if ([:len $BotToken] = 0 or [:len $ChatId] = 0 or [:len $PoeMainInterface] = 0) do={
         :log error ("Насос - Попытка #" . $initAttempts . ": Критичные переменные не готовы")
@@ -124,16 +124,16 @@
 :if ([:typeof $LastUpdateId] = "nothing" || [:len $LastUpdateId] = 0) do={
     :log info "Насос - Получение начального offset..."
     :do {
-        :local initUpdates [/tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/getUpdates?offset=-1&limit=1") as-value output=user]
-        :local initContent ($initUpdates->"data")
-        :local updateIdPos [:find $initContent "\"update_id\":"]
-        :if ([:len $updateIdPos] > 0) do={
-            :local idStart ($updateIdPos + 12)
-            :local idEnd [:find $initContent "," $idStart]
-            :local latestUpdateId [:pick $initContent $idStart $idEnd]
-            :set LastUpdateId ($latestUpdateId + 1)
+    :local initUpdates [/tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/getUpdates?offset=-1&limit=1") as-value output=user]
+    :local initContent ($initUpdates->"data")
+    :local updateIdPos [:find $initContent "\"update_id\":"]
+    :if ([:len $updateIdPos] > 0) do={
+        :local idStart ($updateIdPos + 12)
+        :local idEnd [:find $initContent "," $idStart]
+        :local latestUpdateId [:pick $initContent $idStart $idEnd]
+        :set LastUpdateId ($latestUpdateId + 1)
             :log info ("Насос - Offset установлен: " . $LastUpdateId)
-        } else={
+    } else={
             :set LastUpdateId 1
             :log info "Насос - Offset по умолчанию: 1"
         }
@@ -309,10 +309,10 @@
                     
                     # Защита от некорректных значений времени
                     :if ($startSeconds >= 0 && $currentSeconds >= 0) do={
-                        :set workSeconds ($currentSeconds - $startSeconds)
-                        :if ($workSeconds < 0) do={
-                            :set workSeconds ($workSeconds + 86400)
-                        }
+                    :set workSeconds ($currentSeconds - $startSeconds)
+                    :if ($workSeconds < 0) do={
+                        :set workSeconds ($workSeconds + 86400)
+                    }
                         
                         # Используем TimeUtils для форматирования с защитой
                         :if ($workSeconds >= 0) do={
@@ -351,7 +351,7 @@
                         }
                     }
 
-                    :if ($remainingSeconds > 0) do={
+                :if ($remainingSeconds > 0) do={
                         :set InputSeconds $remainingSeconds
                         :do {
                             /system script run Nasos-TimeUtils
@@ -380,18 +380,18 @@
             } else={
                 # Насос остановлен
                 :set statusText ($statusText . $MsgStatusHeader . " " . $MsgPumpOff)
-                
+            
                 # Расчет времени с момента остановки (показываем первым)
-                :if ([:len $LastStopTime] > 0) do={
+            :if ([:len $LastStopTime] > 0) do={
                     :local stopSeconds [$timeToSeconds $LastStopTime]
                     :local currentSeconds [$timeToSeconds $currentTime]
                     
                     # Защита от некорректных значений
                     :if ($stopSeconds >= 0 && $currentSeconds >= 0) do={
-                        :local stopDiffSeconds ($currentSeconds - $stopSeconds)
-                        :if ($stopDiffSeconds < 0) do={
-                            :set stopDiffSeconds ($stopDiffSeconds + 86400)
-                        }
+                :local stopDiffSeconds ($currentSeconds - $stopSeconds)
+                :if ($stopDiffSeconds < 0) do={
+                    :set stopDiffSeconds ($stopDiffSeconds + 86400)
+                }
                         
                         # Используем TimeUtils для форматирования с защитой
                         :if ($stopDiffSeconds >= 0) do={
@@ -406,7 +406,7 @@
                     } else={
                         :set statusText ($statusText . $MsgNewLine . $MsgStatusLastStopUnknown)
                     }
-                } else={
+            } else={
                     :set statusText ($statusText . $MsgNewLine . $MsgStatusLastStopUnknown)
                 }
                 
@@ -456,4 +456,4 @@
     }
     # Пауза между циклами
     :delay 4s
-}
+} 

@@ -20,34 +20,48 @@ import argparse
 from pathlib import Path
 import paramiko
 from paramiko import SSHClient, SFTPClient
+from typing import List, Dict, Optional
+
+# Настройки
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(SCRIPT_DIR, "mikrotik_config.json")
+
+# Цвета для вывода
+RED = '\033[0;31m'
+GREEN = '\033[0;32m'
+YELLOW = '\033[1;33m'
+BLUE = '\033[0;34m'
+NC = '\033[0m'  # No Color
 
 class Colors:
     """ANSI цвета для консоли"""
-    RED = '\033[91m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
+    RED = RED
+    GREEN = GREEN
+    YELLOW = YELLOW
+    BLUE = BLUE
     PURPLE = '\033[95m'
     CYAN = '\033[96m'
     WHITE = '\033[97m'
     BOLD = '\033[1m'
-    END = '\033[0m'
+    END = NC
 
 class MikroTikUploader:
-    def __init__(self, config_file='mikrotik_config.json'):
-        self.config_file = config_file
+    def __init__(self):
         self.config = self.load_config()
         self.ssh_client = None
         self.sftp_client = None
         
-    def load_config(self):
+    def load_config(self) -> Dict:
         """Загружает конфигурацию из файла"""
-        default_config = {
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        return {
             "router_ip": "",
             "username": "admin",
             "password": "",
             "port": 22,
-            "source_dir": "CodeNasos",  # Будет искать относительно текущей директории
+            "source_dir": "../CodeNasos",
             "remote_upload_dir": "/",
             "modules": [
                 "Nasos-Runner.rsc",
@@ -65,67 +79,48 @@ class MikroTikUploader:
                 "Nasos-TG-SendMessage.rsc"
             ]
         }
-        
-        if os.path.exists(self.config_file):
-            try:
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    return {**default_config, **json.load(f)}
-            except Exception as e:
-                print(f"{Colors.YELLOW}⚠️ Ошибка чтения конфига: {e}{Colors.END}")
-                return default_config
-        else:
-            return default_config
     
     def save_config(self):
         """Сохраняет конфигурацию в файл"""
-        try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"{Colors.RED}❌ Ошибка сохранения конфига: {e}{Colors.END}")
+        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(self.config, f, indent=2)
     
     def setup_connection(self):
-        """Настройка параметров подключения"""
+        """Настройка подключения"""
         print(f"{Colors.CYAN}🔧 Настройка подключения к MikroTik{Colors.END}")
         
-        try:
-            # IP адрес роутера
-            if not self.config["router_ip"]:
-                self.config["router_ip"] = input("Введите IP адрес MikroTik роутера: ").strip()
-            else:
-                new_ip = input(f"IP адрес [{self.config['router_ip']}]: ").strip()
-                if new_ip:
-                    self.config["router_ip"] = new_ip
-            
-            # Имя пользователя  
-            new_username = input(f"Имя пользователя [{self.config['username']}]: ").strip()
-            if new_username:
-                self.config["username"] = new_username
-            
-            # Пароль
-            if not self.config["password"]:
-                self.config["password"] = getpass.getpass("Введите пароль: ")
-            else:
-                if input("Изменить сохраненный пароль? (y/N): ").lower() == 'y':
-                    self.config["password"] = getpass.getpass("Новый пароль: ")
-            
-            # Порт SSH
-            new_port = input(f"Порт SSH [{self.config['port']}]: ").strip()
-            if new_port:
-                try:
-                    self.config["port"] = int(new_port)
-                except ValueError:
-                    print(f"{Colors.YELLOW}⚠️ Неверный порт, используется {self.config['port']}{Colors.END}")
-            
-            self.save_config()
-            print(f"{Colors.GREEN}✅ Настройки сохранены{Colors.END}")
-            
-        except EOFError:
-            print(f"\n{Colors.YELLOW}⏹️ Прервано пользователем{Colors.END}")
-            sys.exit(0)
-        except KeyboardInterrupt:
-            print(f"\n{Colors.YELLOW}⏹️ Прервано пользователем{Colors.END}")
-            sys.exit(0)
+        # IP адрес
+        default_ip = self.config.get("router_ip", "")
+        ip = input(f"IP адрес [{default_ip}]: ").strip()
+        if ip:
+            self.config["router_ip"] = ip
+        elif not default_ip:
+            print(f"{RED}❌ IP адрес обязателен{NC}")
+            sys.exit(1)
+
+        # Имя пользователя
+        default_user = self.config.get("username", "admin")
+        username = input(f"Имя пользователя [{default_user}]: ").strip()
+        if username:
+            self.config["username"] = username
+        
+        # Пароль
+        if self.config.get("password"):
+            change = input("Изменить сохраненный пароль? (y/N): ").lower() == 'y'
+            if change:
+                self.config["password"] = input("Введите пароль: ").strip()
+        else:
+            self.config["password"] = input("Введите пароль: ").strip()
+
+        # Порт SSH
+        default_port = self.config.get("port", 22)
+        port = input(f"Порт SSH [{default_port}]: ").strip()
+        if port:
+            self.config["port"] = int(port)
+
+        self.save_config()
+        print(f"{GREEN}✅ Настройки сохранены{NC}")
     
     def connect(self):
         """Подключение к MikroTik через SSH"""
@@ -152,7 +147,7 @@ class MikroTikUploader:
             return True
             
         except Exception as e:
-            print(f"{Colors.RED}❌ Ошибка подключения: {e}{Colors.END}")
+            print(f"{RED}❌ Ошибка подключения: {e}{NC}")
             self.disconnect()  # Закрываем соединение при ошибке
             return False
     
@@ -180,13 +175,13 @@ class MikroTikUploader:
                 
             print(f"{Colors.BLUE}🔌 Отключено от MikroTik{Colors.END}")
         except Exception as e:
-            print(f"{Colors.YELLOW}⚠️ Ошибка при отключении: {e}{Colors.END}")
+            print(f"{YELLOW}⚠️ Ошибка при отключении: {e}{NC}")
     
     def execute_command(self, command):
         """Выполнение команды на MikroTik"""
         try:
             if not self.ssh_client or not self.ssh_client.get_transport() or not self.ssh_client.get_transport().is_active():
-                print(f"{Colors.YELLOW}⚠️ Переподключение к MikroTik...{Colors.END}")
+                print(f"{YELLOW}⚠️ Переподключение к MikroTik...{NC}")
                 if not self.connect():
                     return False, "Ошибка подключения"
                     
@@ -200,13 +195,13 @@ class MikroTikUploader:
             stderr.close()
             
             if error:
-                print(f"{Colors.RED}❌ Ошибка выполнения команды: {error}{Colors.END}")
+                print(f"{RED}❌ Ошибка выполнения команды: {error}{NC}")
                 return False, error
             
             return True, result
             
         except Exception as e:
-            print(f"{Colors.RED}❌ Ошибка SSH команды: {e}{Colors.END}")
+            print(f"{RED}❌ Ошибка SSH команды: {e}{NC}")
             self.disconnect()  # Закрываем соединение при ошибке
             return False, str(e)
     
@@ -216,7 +211,7 @@ class MikroTikUploader:
             self.sftp_client.put(local_path, remote_path)
             return True
         except Exception as e:
-            print(f"{Colors.RED}❌ Ошибка загрузки файла: {e}{Colors.END}")
+            print(f"{RED}❌ Ошибка загрузки файла: {e}{NC}")
             return False
     
     def create_script_from_file(self, script_name, local_file_path):
@@ -243,89 +238,107 @@ class MikroTikUploader:
             return success
             
         except Exception as e:
-            print(f"{Colors.RED}❌ Ошибка создания скрипта: {e}{Colors.END}")
+            print(f"{RED}❌ Ошибка создания скрипта: {e}{NC}")
             return False
     
-    def get_available_modules(self):
+    def get_available_modules(self) -> List[Dict]:
         """Получение списка доступных модулей"""
-        source_dir = Path(self.config['source_dir'])
-        if not source_dir.exists():
-            print(f"{Colors.RED}❌ Папка {source_dir} не найдена{Colors.END}")
-            return []
-        
         modules = []
-        for file_path in source_dir.glob('Nasos-*.rsc'):
-            file_size = file_path.stat().st_size
-            modules.append({
-                'name': file_path.name,
-                'path': str(file_path),
-                'size': file_size,
-                'size_kb': f"{file_size/1024:.1f} KB"
-            })
+        source_dir = os.path.join(os.path.dirname(SCRIPT_DIR), "CodeNasos")
+        
+        if not os.path.exists(source_dir):
+            print(f"{RED}❌ Папка с модулями не найдена: {source_dir}{NC}")
+            sys.exit(1)
+
+        for file in os.listdir(source_dir):
+            if file.endswith('.rsc'):
+                file_path = os.path.join(source_dir, file)
+                size_kb = os.path.getsize(file_path) / 1024
+                modules.append({
+                    'name': file,
+                    'path': file_path,
+                    'size': size_kb
+                })
         
         return sorted(modules, key=lambda x: x['name'])
     
-    def show_modules_menu(self, modules):
-        """Показать меню выбора модулей"""
-        print(f"\n{Colors.CYAN}📋 Доступные модули:{Colors.END}")
+    def display_modules(self, modules: List[Dict]):
+        """Отображение списка модулей"""
+        print(f"{Colors.CYAN}📋 Доступные модули:{Colors.END}")
         print(f"{'№':>3} {'Модуль':<35} {'Размер':>10}")
         print("-" * 50)
         
         for i, module in enumerate(modules, 1):
-            print(f"{i:>3} {module['name']:<35} {module['size_kb']:>10}")
-        
+            print(f"{i:>3} {module['name']:<35} {module['size']:>10}")
+    
+    def select_modules(self, modules: List[Dict]) -> List[Dict]:
+        """Выбор модулей для загрузки"""
         print(f"\n{Colors.YELLOW}Выберите модули для загрузки:{Colors.END}")
         print("- Введите номера через пробел (например: 1 3 5)")
         print("- Введите 'all' для всех модулей")
         print("- Введите 'q' для выхода")
         
-        try:
-            return input("\nВаш выбор: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return "q"
+        while True:
+            choice = input("\nВаш выбор: ").strip().lower()
+            
+            if choice == 'q':
+                sys.exit(0)
+            elif choice == 'all':
+                return modules
+            else:
+                try:
+                    indices = [int(x) - 1 for x in choice.split()]
+                    selected = [modules[i] for i in indices if 0 <= i < len(modules)]
+                    return selected
+                except (ValueError, IndexError):
+                    print(f"{RED}❌ Неверный выбор. Попробуйте снова.{NC}")
     
-    def upload_selected_modules(self, selected_modules):
+    def upload_modules(self, modules: List[Dict]):
         """Загрузка выбранных модулей"""
-        if not selected_modules:
-            print(f"{Colors.YELLOW}⚠️ Модули не выбраны{Colors.END}")
+        if not modules:
+            print(f"{YELLOW}⚠️ Модули не выбраны{NC}")
             return
         
-        print(f"\n{Colors.BLUE}🚀 Начинаю загрузку {len(selected_modules)} модулей...{Colors.END}")
+        print(f"\n{Colors.BLUE}🚀 Начинаю загрузку {len(modules)} модулей...{NC}")
         
         success_count = 0
         fail_count = 0
         
-        for i, module in enumerate(selected_modules, 1):
+        for i, module in enumerate(modules, 1):
             script_name = module['name'].replace('.rsc', '')
-            print(f"\n[{i}/{len(selected_modules)}] {Colors.CYAN}📤 Загружаю {module['name']}...{Colors.END}")
+            print(f"\n[{i}/{len(modules)}] {Colors.CYAN}📤 Загружаю {module['name']}...{NC}")
             
             if self.create_script_from_file(script_name, module['path']):
-                print(f"{Colors.GREEN}✅ {module['name']} загружен успешно{Colors.END}")
+                print(f"{GREEN}✅ {module['name']} загружен успешно{NC}")
                 success_count += 1
             else:
-                print(f"{Colors.RED}❌ Ошибка загрузки {module['name']}{Colors.END}")
+                print(f"{RED}❌ Ошибка загрузки {module['name']}{NC}")
                 fail_count += 1
             
             # Небольшая пауза между загрузками
             time.sleep(0.5)
         
-        print(f"\n{Colors.BOLD}📊 Результат загрузки:{Colors.END}")
-        print(f"{Colors.GREEN}✅ Успешно загружено: {success_count}{Colors.END}")
+        print(f"\n{Colors.BOLD}📊 Результат загрузки:{NC}")
+        print(f"{GREEN}✅ Успешно загружено: {success_count}{NC}")
         if fail_count > 0:
-            print(f"{Colors.RED}❌ Ошибок: {fail_count}{Colors.END}")
+            print(f"{RED}❌ Ошибок: {fail_count}{NC}")
         
         return success_count, fail_count
     
-    def list_scripts(self):
-        """Показать список скриптов в RouterOS"""
-        print(f"\n{Colors.BLUE}📋 Получаю список скриптов из RouterOS...{Colors.END}")
-        success, result = self.execute_command('/system script print brief')
-        
-        if success:
-            print(f"\n{Colors.CYAN}Скрипты в RouterOS:{Colors.END}")
-            print(result)
-        else:
-            print(f"{Colors.RED}❌ Не удалось получить список скриптов{Colors.END}")
+    def list_remote_scripts(self):
+        """Получение списка скриптов из RouterOS"""
+        if input(f"\n{Colors.YELLOW}Показать список скриптов в RouterOS? (Y/n): {NC}").lower() != 'n':
+            print(f"\n{Colors.BLUE}📋 Получаю список скриптов из RouterOS...{NC}")
+            try:
+                success, result = self.execute_command('/system script print brief')
+                
+                if success:
+                    print(f"\n{Colors.CYAN}Скрипты в RouterOS:{NC}")
+                    print(result)
+                else:
+                    print(f"{RED}❌ Не удалось получить список скриптов{NC}")
+            except Exception as e:
+                print(f"{RED}❌ Ошибка получения списка скриптов: {str(e)}{NC}")
     
     def run_interactive(self):
         """Интерактивный режим"""
@@ -347,38 +360,24 @@ class MikroTikUploader:
             while True:
                 modules = self.get_available_modules()
                 if not modules:
-                    print(f"{Colors.RED}❌ Модули не найдены в папке {self.config['source_dir']}{Colors.END}")
+                    print(f"{RED}❌ Модули не найдены в папке {self.config['source_dir']}{NC}")
                     break
                 
-                choice = self.show_modules_menu(modules)
-                
-                if choice.lower() == 'q':
-                    break
-                elif choice.lower() == 'all':
-                    selected_modules = modules
-                else:
-                    try:
-                        indices = [int(x) - 1 for x in choice.split()]
-                        selected_modules = [modules[i] for i in indices if 0 <= i < len(modules)]
-                    except (ValueError, IndexError):
-                        print(f"{Colors.RED}❌ Неверный выбор{Colors.END}")
-                        continue
+                choice = self.select_modules(modules)
                 
                 # Загрузка модулей
-                success_count, fail_count = self.upload_selected_modules(selected_modules)
+                success_count, fail_count = self.upload_modules(choice)
                 
                 # Показать скрипты
                 if success_count > 0:
                     try:
-                        show_scripts = input(f"\n{Colors.YELLOW}Показать список скриптов в RouterOS? (Y/n): {Colors.END}").strip()
-                        if show_scripts.lower() != 'n':
-                            self.list_scripts()
+                        self.list_remote_scripts()
                     except (EOFError, KeyboardInterrupt):
                         break
                 
                 # Продолжить?
                 try:
-                    continue_upload = input(f"\n{Colors.YELLOW}Загрузить еще модули? (y/N): {Colors.END}").strip()
+                    continue_upload = input(f"\n{Colors.YELLOW}Загрузить еще модули? (y/N): {NC}").strip()
                     if continue_upload.lower() != 'y':
                         break
                 except (EOFError, KeyboardInterrupt):
@@ -387,7 +386,7 @@ class MikroTikUploader:
         finally:
             self.disconnect()
         
-        print(f"\n{Colors.GREEN}🎉 Работа завершена!{Colors.END}")
+        print(f"\n{GREEN}🎉 Работа завершена!{NC}")
         return 0
 
 def main():
@@ -410,7 +409,7 @@ def main():
     
     args = parser.parse_args()
     
-    uploader = MikroTikUploader(args.config)
+    uploader = MikroTikUploader()
     
     if args.batch:
         # Batch режим
@@ -419,10 +418,10 @@ def main():
         
         try:
             modules = uploader.get_available_modules()
-            success_count, fail_count = uploader.upload_selected_modules(modules)
+            success_count, fail_count = uploader.upload_modules(modules)
             
             if args.list_scripts and success_count > 0:
-                uploader.list_scripts()
+                uploader.list_remote_scripts()
                 
         finally:
             uploader.disconnect()
@@ -435,7 +434,7 @@ def main():
             return 1
         
         try:
-            uploader.list_scripts()
+            uploader.list_remote_scripts()
         finally:
             uploader.disconnect()
         
@@ -449,8 +448,8 @@ if __name__ == '__main__':
     try:
         sys.exit(main())
     except KeyboardInterrupt:
-        print(f"\n{Colors.YELLOW}⏹️ Прервано пользователем{Colors.END}")
+        print(f"\n{YELLOW}⏹️ Прервано пользователем{NC}")
         sys.exit(1)
     except Exception as e:
-        print(f"{Colors.RED}❌ Критическая ошибка: {e}{Colors.END}")
+        print(f"{RED}❌ Критическая ошибка: {e}{NC}")
         sys.exit(1) 
