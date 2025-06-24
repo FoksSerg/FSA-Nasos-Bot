@@ -1,0 +1,23 @@
+{
+  "router_ip": "192.168.88.1",
+  "username": "admin",
+  "password": "your_password",
+  "port": 22,
+  "source_dir": "../CodeNasos",
+  "remote_upload_dir": "/",
+  "modules": [
+    "Nasos-Runner.rsc",
+    "Nasos-Telegram.rsc",
+    "Nasos-Messages.rsc",
+    "Nasos-TG-Activator.rsc",
+    "Nasos-TG-Poller.rsc",
+    "Nasos-TG-SendKeyboard.rsc",
+    "Nasos-TG-MenuSet.rsc",
+    "Nasos-TimeUtils.rsc",
+    "Nasos-TG-SendReplyKeyboard.rsc",
+    "Nasos-WatchDog.rsc",
+    "Nasos-Startup.rsc",
+    "Nasos-TG-MenuClear.rsc",
+    "Nasos-TG-SendMessage.rsc"
+  ]
+}
