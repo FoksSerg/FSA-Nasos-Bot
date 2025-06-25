@@ -455,7 +455,7 @@ class MikrotikUploader:
                 reply = self.read_sentence()
                 if not reply or reply[0] == '!done':
                     break
-                    
+                
                 if reply[0] == '!re':
                     for item in reply:
                         if item.startswith('=name='):
@@ -531,7 +531,7 @@ def main():
         uploader.upload_modules()
     elif sys.argv[1] == 'list':
         # Показать загруженные
-        uploader.list_scripts()
+            uploader.list_scripts()
     else:
         # Загрузить конкретные модули
         modules = sys.argv[1:]

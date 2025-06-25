@@ -1,6 +1,7 @@
 # 🚰 NasosRunner - Система управления насосом через Telegram
 
 [![RouterOS](https://img.shields.io/badge/RouterOS-v7.0+-blue.svg)](https://mikrotik.com/)
+[![Version](https://img.shields.io/badge/Version-v4.0.1-orange.svg)](https://github.com/fokinsa/NasosRunner)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.7+-yellow.svg)](https://python.org/)
 
@@ -212,11 +213,8 @@ NasosRunner/
 │   ├── UrlEncoder.py                    # GUI приложение Python
 │   └── requirements.txt                 # Зависимости Python
 ├── 🚀 MikrotikUploader/                 # Загрузчик модулей
-│   ├── mikrotik_uploader.py            # Основной скрипт загрузчика
-│   ├── upload_to_mikrotik.sh           # Bash скрипт для запуска
+│   ├── mikrotik_uploader.py            # Основной скрипт загрузчика (v4.0.1)
 │   ├── requirements_uploader.txt        # Зависимости Python
-│   ├── mikrotik_config.json            # Конфигурация подключения
-│   ├── test_interface.py               # Тестовый интерфейс
 │   └── README.md                       # Документация загрузчика
 ├── 🚀 upload_to_mikrotik.py            # Python обертка для запуска
 ├── 🚀 Nasos-Startup.rsc                # Автозапуск системы
