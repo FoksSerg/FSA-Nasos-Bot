@@ -1,455 +1,542 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-MikroTik Router Uploader
-Автоматическая загрузка модулей RouterOS в MikroTik через SSH/SFTP
-
-Требования:
-- pip install paramiko
-
-Использование:
-python3 mikrotik_uploader.py
-"""
-
+import socket
 import os
-import sys
-import json
+import codecs
 import time
-import getpass
-import argparse
-from pathlib import Path
-import paramiko
-from paramiko import SSHClient, SFTPClient
-from typing import List, Dict, Optional
+import glob
+import sys
+import re
 
-# Настройки
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(SCRIPT_DIR, "mikrotik_config.json")
-
-# Цвета для вывода
-RED = '\033[0;31m'
-GREEN = '\033[0;32m'
-YELLOW = '\033[1;33m'
-BLUE = '\033[0;34m'
-NC = '\033[0m'  # No Color
-
-class Colors:
-    """ANSI цвета для консоли"""
-    RED = RED
-    GREEN = GREEN
-    YELLOW = YELLOW
-    BLUE = BLUE
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
-    BOLD = '\033[1m'
-    END = NC
-
-class MikroTikUploader:
+class MikrotikUploader:
     def __init__(self):
-        self.config = self.load_config()
-        self.ssh_client = None
-        self.sftp_client = None
+        self.router_ip = "10.10.22.1"
+        self.username = "FokinSA"
+        self.password = "gjhfvtyznm"
+        self.port = 8728
+        self.uploaded_count = 0
+        self.failed_count = 0
         
-    def load_config(self) -> Dict:
-        """Загружает конфигурацию из файла"""
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, 'r') as f:
-                return json.load(f)
-        return {
-            "router_ip": "",
-            "username": "admin",
-            "password": "",
-            "port": 22,
-            "source_dir": "../CodeNasos",
-            "remote_upload_dir": "/",
-            "modules": [
-                "Nasos-Runner.rsc",
-                "Nasos-Telegram.rsc", 
-                "Nasos-Messages.rsc",
-                "Nasos-TG-Activator.rsc",
-                "Nasos-TG-Poller.rsc",
-                "Nasos-TG-SendKeyboard.rsc",
-                "Nasos-TG-MenuSet.rsc",
-                "Nasos-TimeUtils.rsc",
-                "Nasos-TG-SendReplyKeyboard.rsc",
-                "Nasos-WatchDog.rsc",
-                "Nasos-Startup.rsc",
-                "Nasos-TG-MenuClear.rsc",
-                "Nasos-TG-SendMessage.rsc"
-            ]
-        }
-    
-    def save_config(self):
-        """Сохраняет конфигурацию в файл"""
-        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(self.config, f, indent=2)
-    
-    def setup_connection(self):
-        """Настройка подключения"""
-        print(f"{Colors.CYAN}🔧 Настройка подключения к MikroTik{Colors.END}")
-        
-        # IP адрес
-        default_ip = self.config.get("router_ip", "")
-        ip = input(f"IP адрес [{default_ip}]: ").strip()
-        if ip:
-            self.config["router_ip"] = ip
-        elif not default_ip:
-            print(f"{RED}❌ IP адрес обязателен{NC}")
-            sys.exit(1)
-
-        # Имя пользователя
-        default_user = self.config.get("username", "admin")
-        username = input(f"Имя пользователя [{default_user}]: ").strip()
-        if username:
-            self.config["username"] = username
-        
-        # Пароль
-        if self.config.get("password"):
-            change = input("Изменить сохраненный пароль? (y/N): ").lower() == 'y'
-            if change:
-                self.config["password"] = input("Введите пароль: ").strip()
-        else:
-            self.config["password"] = input("Введите пароль: ").strip()
-
-        # Порт SSH
-        default_port = self.config.get("port", 22)
-        port = input(f"Порт SSH [{default_port}]: ").strip()
-        if port:
-            self.config["port"] = int(port)
-
-        self.save_config()
-        print(f"{GREEN}✅ Настройки сохранены{NC}")
-    
     def connect(self):
-        """Подключение к MikroTik через SSH"""
-        try:
-            print(f"{Colors.BLUE}🔗 Подключение к {self.config['router_ip']}:{self.config['port']}...{Colors.END}")
-            
-            self.ssh_client = SSHClient()
-            self.ssh_client.load_system_host_keys()
-            # Используем WarningPolicy для безопасности, но с возможностью подключения
-            self.ssh_client.set_missing_host_key_policy(paramiko.WarningPolicy())
-            
-            self.ssh_client.connect(
-                hostname=self.config['router_ip'],
-                port=self.config['port'],
-                username=self.config['username'],
-                password=self.config['password'],
-                timeout=10,
-                allow_agent=False,  # Отключаем SSH агент
-                look_for_keys=False  # Отключаем поиск ключей
-            )
-            
-            self.sftp_client = self.ssh_client.open_sftp()
-            print(f"{Colors.GREEN}✅ Подключение установлено{Colors.END}")
-            return True
-            
-        except Exception as e:
-            print(f"{RED}❌ Ошибка подключения: {e}{NC}")
-            self.disconnect()  # Закрываем соединение при ошибке
-            return False
-    
-    def disconnect(self):
-        """Отключение от MikroTik"""
-        try:
-            if self.sftp_client:
-                try:
-                    self.sftp_client.close()
-                except:
-                    pass
-                self.sftp_client = None
+        print(f"🔗 Подключение к {self.router_ip}...")
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.settimeout(60)
+        self.sock.connect((self.router_ip, self.port))
+        
+    def write_word(self, word):
+        if isinstance(word, bytes):
+            data = word
+        else:
+            # Очищаем строку от не-ASCII символов
+            word = re.sub(r'[^\x00-\x7F]+', '', word)
+            data = word.encode("ascii", errors="ignore")
                 
-            if self.ssh_client:
-                try:
-                    for session in self.ssh_client._transport.getpeername():
-                        try:
-                            session.close()
-                        except:
-                            pass
-                    self.ssh_client.close()
-                except:
-                    pass
-                self.ssh_client = None
-                
-            print(f"{Colors.BLUE}🔌 Отключено от MikroTik{Colors.END}")
-        except Exception as e:
-            print(f"{YELLOW}⚠️ Ошибка при отключении: {e}{NC}")
-    
-    def execute_command(self, command):
-        """Выполнение команды на MikroTik"""
+        length = len(data)
+        if length < 0x80:
+            self.sock.send(length.to_bytes(1, byteorder='big'))
+        elif length < 0x4000:
+            self.sock.send(((length | 0x8000) & 0xFFFF).to_bytes(2, byteorder='big'))
+        self.sock.send(data)
+        
+    def write_sentence(self, words):
+        for word in words:
+            self.write_word(word)
+        self.write_word('')
+        
+    def read_word(self):
+        ret = b''
+        length = int.from_bytes(self.sock.recv(1), byteorder='big')
+        if length & 0x80:
+            length = ((length & 0x7F) << 8) | int.from_bytes(self.sock.recv(1), byteorder='big')
+        while length > 0:
+            t = self.sock.recv(length)
+            ret += t
+            length -= len(t)
+        
         try:
-            if not self.ssh_client or not self.ssh_client.get_transport() or not self.ssh_client.get_transport().is_active():
-                print(f"{YELLOW}⚠️ Переподключение к MikroTik...{NC}")
-                if not self.connect():
-                    return False, "Ошибка подключения"
-                    
-            stdin, stdout, stderr = self.ssh_client.exec_command(command, timeout=30)
-            result = stdout.read().decode('utf-8').strip()
-            error = stderr.read().decode('utf-8').strip()
-            
-            # Закрываем каналы
-            stdin.close()
-            stdout.close()
-            stderr.close()
-            
-            if error:
-                print(f"{RED}❌ Ошибка выполнения команды: {error}{NC}")
-                return False, error
-            
-            return True, result
-            
-        except Exception as e:
-            print(f"{RED}❌ Ошибка SSH команды: {e}{NC}")
-            self.disconnect()  # Закрываем соединение при ошибке
-            return False, str(e)
-    
-    def upload_file(self, local_path, remote_path):
-        """Загрузка файла через SFTP"""
-        try:
-            self.sftp_client.put(local_path, remote_path)
-            return True
-        except Exception as e:
-            print(f"{RED}❌ Ошибка загрузки файла: {e}{NC}")
-            return False
-    
-    def create_script_from_file(self, script_name, local_file_path):
-        """Создание скрипта в RouterOS из локального файла"""
-        try:
-            # Читаем содержимое файла
-            with open(local_file_path, 'r', encoding='utf-8') as f:
-                script_content = f.read()
-            
-            # Экранируем специальные символы для RouterOS
-            script_content = script_content.replace('\\', '\\\\')
-            script_content = script_content.replace('"', '\\"')
-            script_content = script_content.replace('\n', '\\n')
-            
-            # Создаем скрипт
-            command = f'/system script add name="{script_name}" source="{script_content}"'
-            
-            # Сначала удаляем существующий скрипт если есть
-            delete_cmd = f'/system script remove [find name="{script_name}"]'
-            self.execute_command(delete_cmd)
-            
-            # Создаем новый скрипт
-            success, result = self.execute_command(command)
-            return success
-            
-        except Exception as e:
-            print(f"{RED}❌ Ошибка создания скрипта: {e}{NC}")
-            return False
-    
-    def get_available_modules(self) -> List[Dict]:
-        """Получение списка доступных модулей"""
-        modules = []
-        source_dir = os.path.join(os.path.dirname(SCRIPT_DIR), "CodeNasos")
+            return ret.decode("ascii", errors="ignore")
+        except UnicodeDecodeError:
+            return ret.decode('utf-8', errors='replace')
         
-        if not os.path.exists(source_dir):
-            print(f"{RED}❌ Папка с модулями не найдена: {source_dir}{NC}")
-            sys.exit(1)
-
-        for file in os.listdir(source_dir):
-            if file.endswith('.rsc'):
-                file_path = os.path.join(source_dir, file)
-                size_kb = os.path.getsize(file_path) / 1024
-                modules.append({
-                    'name': file,
-                    'path': file_path,
-                    'size': size_kb
-                })
-        
-        return sorted(modules, key=lambda x: x['name'])
-    
-    def display_modules(self, modules: List[Dict]):
-        """Отображение списка модулей"""
-        print(f"{Colors.CYAN}📋 Доступные модули:{Colors.END}")
-        print(f"{'№':>3} {'Модуль':<35} {'Размер':>10}")
-        print("-" * 50)
-        
-        for i, module in enumerate(modules, 1):
-            print(f"{i:>3} {module['name']:<35} {module['size']:>10}")
-    
-    def select_modules(self, modules: List[Dict]) -> List[Dict]:
-        """Выбор модулей для загрузки"""
-        print(f"\n{Colors.YELLOW}Выберите модули для загрузки:{Colors.END}")
-        print("- Введите номера через пробел (например: 1 3 5)")
-        print("- Введите 'all' для всех модулей")
-        print("- Введите 'q' для выхода")
-        
+    def read_sentence(self):
+        ret = []
         while True:
-            choice = input("\nВаш выбор: ").strip().lower()
+            word = self.read_word()
+            if not word:
+                break
+            ret.append(word)
+        return ret
+        
+    def login(self):
+        print("🔑 Вход...")
+        self.write_sentence(['/login'])
+        self.read_sentence()
+        self.write_sentence(['/login', f'=name={self.username}', f'=password={self.password}'])
+        reply = self.read_sentence()
+        if reply[0] == '!done':
+            print("✓ Вход выполнен")
+            return True
+        else:
+            print(f"❌ Ошибка входа: {reply}")
+            return False
+
+    def verify_script_exists(self, script_name):
+        """Проверка существования скрипта"""
+        self.write_sentence(['/system/script/print', f'?name={script_name}'])
+        exists = False
+        while True:
+            reply = self.read_sentence()
+            if not reply:
+                break
+            if reply[0] == '!re':
+                for word in reply:
+                    if word.startswith('=name=') and word[6:] == script_name:
+                        exists = True
+                        break
+            elif reply[0] == '!done':
+                break
+        return exists
+
+    def verify_scheduler_exists(self, scheduler_name):
+        """Проверка существования шедулера"""
+        self.write_sentence(['/system/scheduler/print', f'?name={scheduler_name}'])
+        exists = False
+        while True:
+            reply = self.read_sentence()
+            if not reply:
+                break
+            if reply[0] == '!re':
+                for word in reply:
+                    if word.startswith('=name=') and word[6:] == scheduler_name:
+                        exists = True
+                        break
+            elif reply[0] == '!done':
+                break
+        return exists
+
+    def remove_script(self, script_name):
+        """Удаление скрипта с проверкой"""
+        # Проверяем существование скрипта
+        self.write_sentence(['/system/script/print', f'?name={script_name}'])
+        script_id = None
+        while True:
+            reply = self.read_sentence()
+            if not reply:
+                break
+            if reply[0] == '!re':
+                for word in reply:
+                    if word.startswith('=.id='):
+                        script_id = word[5:]
+                        break
+            elif reply[0] == '!done':
+                break
+        
+        if script_id:
+            # Удаляем скрипт
+            self.write_sentence(['/system/script/remove', f'=.id={script_id}'])
+            while True:
+                reply = self.read_sentence()
+                if not reply or reply[0] == '!done':
+                    break
+            time.sleep(1)
             
-            if choice == 'q':
-                sys.exit(0)
-            elif choice == 'all':
-                return modules
-            else:
+            # Проверяем что скрипт действительно удален
+            if self.verify_script_exists(script_name):
+                print(f"❌ Ошибка: скрипт {script_name} не был удален")
+                return False
+            return True
+        return True  # Скрипт не существует - значит уже удален
+
+    def remove_scheduler(self, scheduler_name):
+        """Удаление шедулера с проверкой"""
+        if self.verify_scheduler_exists(scheduler_name):
+            self.write_sentence(['/system/scheduler/remove', f'=.id=[find name={scheduler_name}]'])
+            reply = self.read_sentence()
+            time.sleep(1)
+            if self.verify_scheduler_exists(scheduler_name):
+                print(f"❌ Ошибка: шедулер {scheduler_name} не был удален")
+                return False
+        return True
+
+    def get_mikrotik_time(self):
+        """Получение текущего времени микротика"""
+        self.write_sentence(['/system/clock/print'])
+        clock_data = self.read_sentence()
+        
+        for line in clock_data:
+            if line.startswith('=time='):
+                time_str = line[6:]
                 try:
-                    indices = [int(x) - 1 for x in choice.split()]
-                    selected = [modules[i] for i in indices if 0 <= i < len(modules)]
-                    return selected
-                except (ValueError, IndexError):
-                    print(f"{RED}❌ Неверный выбор. Попробуйте снова.{NC}")
+                    h, m, s = map(int, time_str.split(':'))
+                    # Добавляем 5 секунд
+                    s += 5
+                    if s >= 60:
+                        s -= 60
+                        m += 1
+                        if m >= 60:
+                            m -= 60
+                            h += 1
+                            if h >= 24:
+                                h -= 24
+                    return f"{h:02d}:{m:02d}:{s:02d}"
+                except ValueError:
+                    break
+        return None
     
-    def upload_modules(self, modules: List[Dict]):
-        """Загрузка выбранных модулей"""
-        if not modules:
-            print(f"{YELLOW}⚠️ Модули не выбраны{NC}")
-            return
+    def upload_script(self, script_name, content):
+        """Загрузка скрипта с проверкой"""
+        # Для больших файлов используем специальный метод
+        if len(content) > 15000 and not script_name.endswith(('-TEMP1', '-TEMP2', '-Combine')):
+            return self.upload_large_script(script_name, content)
         
-        print(f"\n{Colors.BLUE}🚀 Начинаю загрузку {len(modules)} модулей...{NC}")
-        
-        success_count = 0
-        fail_count = 0
-        
-        for i, module in enumerate(modules, 1):
-            script_name = module['name'].replace('.rsc', '')
-            print(f"\n[{i}/{len(modules)}] {Colors.CYAN}📤 Загружаю {module['name']}...{NC}")
+        sock = None
+        try:
+            print(f"\n📤 {script_name} ({len(content)} байт)...")
             
-            if self.create_script_from_file(script_name, module['path']):
-                print(f"{GREEN}✅ {module['name']} загружен успешно{NC}")
-                success_count += 1
-            else:
-                print(f"{RED}❌ Ошибка загрузки {module['name']}{NC}")
-                fail_count += 1
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(60)
+            sock.connect((self.router_ip, self.port))
+            self.sock = sock
             
-            # Небольшая пауза между загрузками
-            time.sleep(0.5)
-        
-        print(f"\n{Colors.BOLD}📊 Результат загрузки:{NC}")
-        print(f"{GREEN}✅ Успешно загружено: {success_count}{NC}")
-        if fail_count > 0:
-            print(f"{RED}❌ Ошибок: {fail_count}{NC}")
-        
-        return success_count, fail_count
+            if not self.login():
+                return False
     
-    def list_remote_scripts(self):
-        """Получение списка скриптов из RouterOS"""
-        if input(f"\n{Colors.YELLOW}Показать список скриптов в RouterOS? (Y/n): {NC}").lower() != 'n':
-            print(f"\n{Colors.BLUE}📋 Получаю список скриптов из RouterOS...{NC}")
-            try:
-                success, result = self.execute_command('/system script print brief')
-                
-                if success:
-                    print(f"\n{Colors.CYAN}Скрипты в RouterOS:{NC}")
-                    print(result)
+            time.sleep(2)
+            
+            # Удаление старого скрипта если есть
+            if not self.remove_script(script_name):
+                return False
+            
+            content = content.replace('\r\n', '\n').replace('\r', '\n')
+            
+            # Загрузка
+            self.write_sentence([
+                '/system/script/add',
+                f'=name={script_name}',
+                f'=source={content}',
+                '=policy=read,write,policy,test'
+            ])
+            
+            # Читаем все ответы до !done
+            success = False
+            while True:
+                reply = self.read_sentence()
+                if not reply:
+                    break
+                if reply[0] == '!done':
+                    success = True
+                    break
+                elif reply[0] == '!trap':
+                    print(f"❌ Ошибка: {reply}")
+                    return False
+            
+            if success:
+                # Проверяем что скрипт действительно создан
+                if self.verify_script_exists(script_name):
+                    print(f"✅ {script_name} загружен")
+                    self.uploaded_count += 1
+                    return True
                 else:
-                    print(f"{RED}❌ Не удалось получить список скриптов{NC}")
-            except Exception as e:
-                print(f"{RED}❌ Ошибка получения списка скриптов: {str(e)}{NC}")
-    
-    def run_interactive(self):
-        """Интерактивный режим"""
-        print(f"{Colors.BOLD}{Colors.CYAN}")
-        print("=" * 60)
-        print("🤖 MikroTik Module Uploader")
-        print("   Автоматическая загрузка модулей RouterOS")
-        print("=" * 60)
-        print(f"{Colors.END}")
-        
-        # Настройка подключения
-        self.setup_connection()
-        
-        # Подключение
-        if not self.connect():
-            return 1
+                    print(f"❌ Ошибка: скрипт {script_name} не найден после загрузки")
+                    self.failed_count += 1
+                    return False
+            else:
+                print(f"❌ Ошибка {script_name}: не получен ответ !done")
+                self.failed_count += 1
+                return False
+            
+        except Exception as e:
+            print(f"❌ Ошибка {script_name}: {e}")
+            self.failed_count += 1
+            return False
+        finally:
+            if sock:
+                sock.close()
+            time.sleep(3)
+
+    def upload_large_script(self, script_name, content):
+        """Загрузка большого скрипта по частям с последующим объединением через шедулер"""
+        print(f"\n📦 Загрузка большого скрипта {script_name} ({len(content)} байт)")
         
         try:
+            # Создаем новое подключение для всей операции
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(60)
+            sock.connect((self.router_ip, self.port))
+            self.sock = sock
+            
+            if not self.login():
+                return False
+            
+            # Разделяем на части по 15KB
+            parts = []
+            chunk_size = 15000
+            for i in range(0, len(content), chunk_size):
+                parts.append(content[i:i + chunk_size])
+            
+            print(f"📑 Разделено на {len(parts)} части")
+            
+            # Загружаем временные части
+            for i, part in enumerate(parts, 1):
+                temp_name = f"{script_name}-TEMP{i}"
+                print(f"\n📤 Загрузка части {i}/{len(parts)}: {temp_name}")
+                
+                # Удаляем старый временный скрипт если есть
+                if not self.remove_script(temp_name):
+                    raise Exception(f"Не удалось удалить старый временный скрипт {temp_name}")
+                
+                # Загрузка части
+                self.write_sentence([
+                    '/system/script/add',
+                    f'=name={temp_name}',
+                    f'=source={part}',
+                    '=policy=read,write,policy,test'
+                ])
+                
+                # Читаем все ответы до !done
+                success = False
+                while True:
+                    reply = self.read_sentence()
+                    if not reply:
+                        break
+                    if reply[0] == '!done':
+                        success = True
+                        break
+                    elif reply[0] == '!trap':
+                        raise Exception(f"Ошибка загрузки части {i}: {reply}")
+                
+                if not success:
+                    raise Exception(f"Не получен ответ !done для части {i}")
+                
+                # Проверяем что часть действительно создана
+                if not self.verify_script_exists(temp_name):
+                    raise Exception(f"Часть {temp_name} не найдена после загрузки")
+                
+                print(f"✅ {temp_name} загружен")
+                time.sleep(2)
+                
+            # Создаем объединяющий скрипт
+            print("\n🔄 Объединение частей...")
+            combine_script = f"""
+# Объединяем части скрипта {script_name}
+:local content ""
+
+# Читаем части
+"""
+            
+            # Добавляем код для каждой части
+            for i in range(1, len(parts) + 1):
+                combine_script += f"""
+:local part{i} [/system script get {script_name}-TEMP{i} source]
+:set content ($content . $part{i})
+"""
+            
+            # Добавляем создание финального скрипта и очистку
+            combine_script += f"""
+# Создаем финальный скрипт
+/system script add name="{script_name}" source=$content policy=read,write,policy,test
+
+# Удаляем временные части
+"""
+            
+            # Добавляем удаление всех временных частей
+            for i in range(1, len(parts) + 1):
+                combine_script += f'/system script remove [find name="{script_name}-TEMP{i}"]\n'
+            
+            # Выводим содержимое для отладки
+            print("\n📝 Содержимое combine скрипта:")
+            print(combine_script)
+            
+            # Загружаем объединяющий скрипт
+            combine_name = f"{script_name}-Combine"
+            print(f"📤 Загрузка объединяющего скрипта {combine_name}")
+            
+            # Удаляем старый combine скрипт если есть
+            if not self.remove_script(combine_name):
+                raise Exception(f"Не удалось удалить старый скрипт {combine_name}")
+            
+            # Загрузка combine скрипта
+            self.write_sentence([
+                '/system/script/add',
+                f'=name={combine_name}',
+                f'=source={combine_script}',
+                '=policy=read,write,policy,test'
+            ])
+            
+            # Читаем все ответы до !done
+            success = False
             while True:
-                modules = self.get_available_modules()
-                if not modules:
-                    print(f"{RED}❌ Модули не найдены в папке {self.config['source_dir']}{NC}")
+                reply = self.read_sentence()
+                if not reply:
                     break
-                
-                choice = self.select_modules(modules)
-                
-                # Загрузка модулей
-                success_count, fail_count = self.upload_modules(choice)
-                
-                # Показать скрипты
-                if success_count > 0:
-                    try:
-                        self.list_remote_scripts()
-                    except (EOFError, KeyboardInterrupt):
-                        break
-                
-                # Продолжить?
-                try:
-                    continue_upload = input(f"\n{Colors.YELLOW}Загрузить еще модули? (y/N): {NC}").strip()
-                    if continue_upload.lower() != 'y':
-                        break
-                except (EOFError, KeyboardInterrupt):
+                if reply[0] == '!done':
+                    success = True
+                    break
+                elif reply[0] == '!trap':
+                    raise Exception(f"Ошибка загрузки объединяющего скрипта: {reply}")
+            
+            if not success:
+                raise Exception("Не получен ответ !done для объединяющего скрипта")
+            
+            # Проверяем что combine скрипт создан
+            if not self.verify_script_exists(combine_name):
+                raise Exception(f"Скрипт {combine_name} не найден после загрузки")
+            
+            print(f"✅ {combine_name} загружен")
+            
+            # Получаем время микротика для шедулера
+            start_time = self.get_mikrotik_time()
+            if not start_time:
+                raise Exception("Не удалось получить время микротика")
+            
+            # Создаем шедулер для запуска combine скрипта
+            scheduler_name = f"run-{script_name}-combine"
+            print(f"⏰ Создание шедулера {scheduler_name} на {start_time}...")
+            
+            # Удаляем старый шедулер если есть
+            if not self.remove_scheduler(scheduler_name):
+                raise Exception(f"Не удалось удалить старый шедулер {scheduler_name}")
+            
+            # Создаем новый шедулер
+            self.write_sentence([
+                '/system/scheduler/add',
+                f'=name={scheduler_name}',
+                f'=on-event=/system script run {script_name}-Combine; :delay 2s; /system script remove {script_name}-Combine; /system scheduler remove {scheduler_name}',
+                f'=start-time={start_time}',
+                '=interval=0s',
+                '=policy=read,write,policy,test'
+            ])
+            
+            # Читаем ответ
+            success = False
+            while True:
+                reply = self.read_sentence()
+                if not reply:
+                    break
+                if reply[0] == '!done':
+                    success = True
+                    break
+                elif reply[0] == '!trap':
+                    raise Exception(f"Ошибка создания шедулера: {reply}")
+            
+            if not success:
+                raise Exception("Не получен ответ !done при создании шедулера")
+            
+            print(f"⏳ Ожидание выполнения объединения...")
+            time.sleep(30)  # Увеличиваем время ожидания до 30 секунд
+            
+            # Проверяем что финальный скрипт создан
+            if not self.verify_script_exists(script_name):
+                raise Exception(f"Финальный скрипт {script_name} не найден после объединения")
+            
+            print(f"✅ Скрипт {script_name} успешно собран!")
+            self.uploaded_count += 1
+            return True
+            
+        except Exception as e:
+            print(f"❌ Ошибка: {e}")
+            self.failed_count += 1
+            return False
+        finally:
+            if 'sock' in locals():
+                sock.close()
+            time.sleep(3)
+    
+    def list_scripts(self):
+        """Показать загруженные скрипты."""
+        try:
+            self.connect()
+            if not self.login():
+                return
+        
+            self.write_sentence(['/system/script/print'])
+            
+            nasos_scripts = []
+            while True:
+                reply = self.read_sentence()
+                if not reply or reply[0] == '!done':
                     break
                     
+                if reply[0] == '!re':
+                    for item in reply:
+                        if item.startswith('=name='):
+                            script_name = item[6:]
+                            if script_name.startswith('Nasos-'):
+                                nasos_scripts.append(script_name)
+            
+            print(f"\n📋 Загружено Nasos скриптов: {len(nasos_scripts)}")
+            for script in sorted(nasos_scripts):
+                print(f"  • {script}")
+                
+        except Exception as e:
+            print(f"❌ Ошибка: {e}")
         finally:
-            self.disconnect()
+            self.sock.close()
+
+    def upload_modules(self, module_names=None):
+        """Загрузка модулей."""
+        script_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'CodeNasos')
         
-        print(f"\n{GREEN}🎉 Работа завершена!{NC}")
-        return 0
+        if module_names is None:
+            # Все .rsc файлы
+            rsc_files = glob.glob(os.path.join(script_dir, '*.rsc'))
+        else:
+            # Конкретные модули
+            rsc_files = []
+            for name in module_names:
+                if not name.endswith('.rsc'):
+                    name += '.rsc'
+                file_path = os.path.join(script_dir, name)
+                if os.path.exists(file_path):
+                    rsc_files.append(file_path)
+                else:
+                    print(f"❌ Файл {name} не найден")
+        
+        if not rsc_files:
+            print("❌ Нет файлов для загрузки")
+            return
+            
+        print(f"📋 К загрузке: {len(rsc_files)} модулей")
+        
+        self.uploaded_count = 0
+        self.failed_count = 0
+        
+        for i, file_path in enumerate(sorted(rsc_files), 1):
+            try:
+                filename = os.path.basename(file_path)
+                script_name = filename.replace('.rsc', '')
+                
+                print(f"[{i}/{len(rsc_files)}] {filename}")
+                
+                try:
+                    with codecs.open(file_path, 'r', encoding='utf-8-sig') as f:
+                        content = f.read()
+                except UnicodeDecodeError:
+                    with codecs.open(file_path, 'r', encoding='windows-1251') as f:
+                        content = f.read()
+                
+                self.upload_script(script_name, content)
+                
+            except Exception as e:
+                print(f"❌ Ошибка {filename}: {e}")
+                self.failed_count += 1
+        
+        print(f"\n📊 Загружено: {self.uploaded_count}, Ошибок: {self.failed_count}")
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='MikroTik Module Uploader - загрузка модулей RouterOS через SSH',
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
+    uploader = MikrotikUploader()
     
-    parser.add_argument('--config', '-c', 
-                       default='mikrotik_config.json',
-                       help='Файл конфигурации (по умолчанию: mikrotik_config.json)')
-    
-    parser.add_argument('--batch', '-b',
-                       action='store_true',
-                       help='Batch режим - загрузить все модули без интерактивного меню')
-    
-    parser.add_argument('--list-scripts', '-l',
-                       action='store_true', 
-                       help='Показать список скриптов в RouterOS')
-    
-    args = parser.parse_args()
-    
-    uploader = MikroTikUploader()
-    
-    if args.batch:
-        # Batch режим
-        if not uploader.connect():
-            return 1
-        
-        try:
-            modules = uploader.get_available_modules()
-            success_count, fail_count = uploader.upload_modules(modules)
-            
-            if args.list_scripts and success_count > 0:
-                uploader.list_remote_scripts()
-                
-        finally:
-            uploader.disconnect()
-        
-        return 0 if fail_count == 0 else 1
-    
-    elif args.list_scripts:
-        # Только показать скрипты
-        if not uploader.connect():
-            return 1
-        
-        try:
-            uploader.list_remote_scripts()
-        finally:
-            uploader.disconnect()
-        
-        return 0
-    
+    if len(sys.argv) == 1:
+        # Без параметров - загрузить все
+        print("🎯 Загрузка всех модулей NasosRunner")
+        uploader.upload_modules()
+    elif sys.argv[1] == 'list':
+        # Показать загруженные
+        uploader.list_scripts()
     else:
-        # Интерактивный режим
-        return uploader.run_interactive()
+        # Загрузить конкретные модули
+        modules = sys.argv[1:]
+        print(f"🎯 Загрузка модулей: {', '.join(modules)}")
+        uploader.upload_modules(modules)
 
 if __name__ == '__main__':
-    try:
-        sys.exit(main())
-    except KeyboardInterrupt:
-        print(f"\n{YELLOW}⏹️ Прервано пользователем{NC}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"{RED}❌ Критическая ошибка: {e}{NC}")
-        sys.exit(1) 
+    main()
