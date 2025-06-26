@@ -8,13 +8,71 @@
 # Объявление глобальных переменных
 :global NasosInitStatus; :global BotToken; :global ChatId; :global PoeMainInterface; :global NewDuration
 :global PoeActiveTimer; :global PoeStartTime; :global PoeTimerName; :global LastStopTime; :global LastWorkDuration; :global ExpectedStopTime
+# Переменные тестового режима
+:global TestPoeStatus; :global testPoeControl; :global safePoeStatus
 # Переменные сообщений
 :global MsgSysStarted; :global MsgSysError; :global MsgPumpOn; :global MsgPumpAlreadyOn; :global MsgPumpAutoStop; :global MsgPumpStoppedByCmd; :global MsgPumpStoppedTimeReduced
 :global MsgTimeWorked; :global MsgTimeMin; :global MsgTimeSec; :global MsgTimeReduced; :global MsgTimeWorkedTemplate; :global MsgTimeAlreadyWorkedTemplate; :global MsgTimeAlreadyWorkedTranslit
 :global MsgNewLine; :global MsgHeader; :global MsgStatusHeader; :global MsgStatusCurrent; :global MsgTimeRemaining; :global MsgTimeExpectedTotal; :global MsgTimeWorkedHeader; :global MsgTimeStoppedAt
-:global MsgPumpStartedFor; :global MsgStopCmdTemplate; :global MsgPumpAlreadyStopped; :global MsgTimeSinceStop; :global MsgErrorNoActiveTimer
+:global MsgPumpStartedFor; :global MsgStopCmdTemplate; :global MsgPumpAlreadyStopped; :global MsgTimeSinceStop; :global MsgErrorNoActiveTimer; :global MsgPumpUnavailable; :global MsgTestModeHeader
 # Переменные TimeUtils
 :global InputSeconds; :global FormattedLog; :global FormattedTelegram
+# Переменные TG-Activator
+:global TgAction; :global TgMessage; :global TgCleanupTime
+
+
+
+# === ФУНКЦИЯ УПРАВЛЕНИЯ POE В ТЕСТОВОМ РЕЖИМЕ ===
+:global testPoeControl do={
+    :local interfaceName $1
+    :local targetStatus $2
+    
+    # Функция работает только в тестовом режиме
+    :if ($interfaceName != "TEST") do={
+        :log error ("Насос - testPoeControl работает только в режиме TEST, получен: " . $interfaceName)
+        :return false
+    }
+    
+    :global TestPoeStatus
+    :set TestPoeStatus $targetStatus
+    :log info ("Насос - Тестовый режим: POE статус изменен на " . $targetStatus)
+    :return true
+}
+
+# === ФУНКЦИЯ БЕЗОПАСНОЙ ПРОВЕРКИ POE СТАТУСА ===
+:global safePoeStatus do={
+    :local interfaceName $1
+    :local defaultStatus $2
+    
+    # Защита от пустых параметров
+    :if ([:typeof $interfaceName] = "nothing" || [:len $interfaceName] = 0) do={
+        :log error "Насос - safePoeStatus: Не указан интерфейс!"
+        :return $defaultStatus
+    }
+    
+    # Тестовый режим - возвращаем эмулируемый статус
+    :if ($interfaceName = "TEST") do={
+        :global TestPoeStatus
+        :log info ("Насос - Тестовый режим: эмулируемый статус POE = " . $TestPoeStatus)
+        :return $TestPoeStatus
+    }
+    
+    # Безопасная проверка существования интерфейса
+    :do {
+        :local interfaceId [/interface ethernet find name=$interfaceName]
+        :if ([:len $interfaceId] = 0) do={
+            :log error ("Насос - Интерфейс '" . $interfaceName . "' не найден!")
+            :return "unavailable"
+        }
+        
+        # Получение POE статуса
+        :local poeStatus [/interface ethernet get $interfaceId poe-out]
+        :return $poeStatus
+    } on-error={
+        :log error ("Насос - Ошибка получения POE статуса для '" . $interfaceName . "'")
+        :return "unavailable"
+    }
+}
 
 # Функция преобразования времени в секунды
 :global timeToSeconds do={
@@ -42,35 +100,62 @@
 :if ([:len $BotToken] = 0 or [:len $ChatId] = 0 or [:len $PoeMainInterface] = 0) do={
     :log error "Насос - КРИТИЧЕСКАЯ ОШИБКА: Обязательные глобальные переменные не определены!"
 }
-# Функция отправки сообщений в Telegram
-:local sendTelegram do={
-    :local token $1
-    :local chatId $2
-    :local message $3
-    :local url "https://api.telegram.org/bot$token/sendMessage"
-    /tool fetch url=$url http-method=post http-data="chat_id=$chatId&text=$message" keep-result=no
+
+# Определение префикса тестового режима
+:local testModePrefix ""
+:if ($PoeMainInterface = "TEST") do={
+    :set testModePrefix ($MsgTestModeHeader . $MsgNewLine)
 }
-# Проверка существования POE интерфейса
-:if ([:len [/interface ethernet find name=$PoeMainInterface]] = 0) do={
-    :log error "Насос - POE интерфейс не найден"
-    $sendTelegram $BotToken $ChatId ($MsgSysError . "POE%20%D0%B8%D0%BD%D1%82%D0%B5%D1%80%D1%84%D0%B5%D0%B9%D1%81%20%D0%BD%D0%B5%20%D0%BD%D0%B0%D0%B9%D0%B4%D0%B5%D0%BD")
+# Проверка доступности POE интерфейса
+:local interfaceAvailable true
+:if ($PoeMainInterface != "TEST") do={
+    # Для реальных интерфейсов проверяем существование
+    :if ([:len [/interface ethernet find name=$PoeMainInterface]] = 0) do={
+        :set interfaceAvailable false
+        :log error "Насос - POE интерфейс не найден"
+        :global TgAction "send"
+        :global TgMessage $MsgPumpUnavailable
+        /system script run Nasos-TG-Activator
+    }
 } else={
+    # Для тестового режима интерфейс всегда доступен
+    :log info "Насос - Тестовый режим активирован"
+}
+
+:if ($interfaceAvailable) do={
     # Отладочная информация о текущем статусе POE
-    :local currentPoeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
+    :local currentPoeStatus [$safePoeStatus $PoeMainInterface "off"]
     # Проверка наличия команды на выполнение
     :if ([:len $NewDuration] = 0) do={
         :log info "Насос - Длительность не установлена"
     } else={
         # Проверка типа данных команды
         :if ([:typeof $NewDuration] = "num") do={
-            :local poeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
+            :local poeStatus [$safePoeStatus $PoeMainInterface "off"]
+            
+            # Проверка доступности интерфейса
+            :if ($poeStatus = "unavailable") do={
+                :log error "Насос - Интерфейс недоступен, команда отменена"
+                :global TgAction "send"
+                :global TgMessage $MsgPumpUnavailable
+                /system script run Nasos-TG-Activator
+                :set NewDuration ""
+                :return false
+            }
             # Команда остановки насоса (NewDuration = 0)
             :if ($NewDuration = 0) do={
                 # Проверка текущего статуса POE перед отключением
                 :if ($poeStatus != "off") do={
-                    # Физическое отключение POE
-                    /interface ethernet poe set $PoeMainInterface poe-out=off
-                    :log warning "Насос - POE ФИЗИЧЕСКИ ОТКЛЮЧЕН"
+                    # Отключение POE (тестовый или продуктивный режим)
+                    :if ($PoeMainInterface = "TEST") do={
+                        # Тестовый режим - эмуляция отключения
+                        $testPoeControl $PoeMainInterface "off"
+                        :log warning "Насос - POE ЭМУЛИРОВАННО ОТКЛЮЧЕН (тестовый режим)"
+                    } else={
+                        # Продуктивный режим - реальное отключение
+                        /interface ethernet poe set $PoeMainInterface poe-out=off
+                        :log warning "Насос - POE ФИЗИЧЕСКИ ОТКЛЮЧЕН"
+                    }
                 # Расчет времени работы насоса с помощью TimeUtils
                 :local workTimeMsg ""
                 :if ([:len $PoeStartTime] > 0) do={
@@ -111,8 +196,10 @@
                 # Получение времени остановки
                 :local stopTime [/system clock get time]
                 # Отправка уведомления в Telegram
-                :local telegramMsg ($MsgStatusHeader . " " . $MsgPumpStoppedByCmd . $MsgNewLine . $telegramWorkMsg . $MsgNewLine . $MsgTimeStoppedAt . $stopTime)
-                $sendTelegram $BotToken $ChatId $telegramMsg
+                :local telegramMsg ($testModePrefix . $MsgStatusHeader . " " . $MsgPumpStoppedByCmd . $MsgNewLine . $telegramWorkMsg . $MsgNewLine . $MsgTimeStoppedAt . $stopTime)
+                :global TgAction "send"
+                :global TgMessage $telegramMsg
+                /system script run Nasos-TG-Activator
                 # Удаление активного таймера
                 :if ([:len $PoeActiveTimer] > 0) do={
                     :if ([:len [/system scheduler find name=$PoeActiveTimer]] > 0) do={
@@ -142,13 +229,15 @@
                         :if ($timeSinceStop < 0) do={
                             :set timeSinceStop ($timeSinceStop + 86400)
                         }
-                        :local stopMinutes ($timeSinceStop / 60)
-                        :local stopSecondsRem ($timeSinceStop - ($stopMinutes * 60))
-                        :set timeSinceStopMsg ($MsgTimeSinceStop . " " . [:tostr $stopMinutes] . $MsgTimeMin . [:tostr $stopSecondsRem] . $MsgTimeSec)
+                        :set InputSeconds $timeSinceStop
+                        /system script run Nasos-TimeUtils
+                        :set timeSinceStopMsg ($MsgTimeSinceStop . " " . $FormattedTelegram)
                     }
                     :log warning ("Насос - НАСОС УЖЕ ОТКЛЮЧЕН" . $timeSinceStopMsg)
-                    :local telegramMsg ($MsgStatusHeader . " " . $MsgPumpAlreadyStopped . $MsgNewLine . $timeSinceStopMsg)
-                    $sendTelegram $BotToken $ChatId $telegramMsg
+                    :local telegramMsg ($testModePrefix . $MsgStatusHeader . " " . $MsgPumpAlreadyStopped . $MsgNewLine . $timeSinceStopMsg)
+                    :global TgAction "send"
+                    :global TgMessage $telegramMsg
+                    /system script run Nasos-TG-Activator
                     # Очистка переменной команды
                     :set NewDuration ""
                 }
@@ -195,12 +284,14 @@
                                 :if ($workSeconds < 0) do={
                                     :set workSeconds ($workSeconds + 86400)
                                 }
-                                :local workMinutes ($workSeconds / 60)
-                                :local workSecondsRem ($workSeconds - ($workMinutes * 60))
-                                :set workTimeMsg ($MsgTimeWorkedTemplate . [:tostr $workMinutes] . $MsgTimeMin . [:tostr $workSecondsRem] . $MsgTimeSec)
+                                :set InputSeconds $workSeconds
+                                /system script run Nasos-TimeUtils
+                                :set workTimeMsg ($MsgTimeWorkedTemplate . $FormattedTelegram)
                             }
                             # Отправка уведомления об автоматической остановке
-                            $sendTelegram $BotToken $ChatId ($MsgStatusCurrent . $MsgNewLine . $MsgPumpAutoStop . $workTimeMsg)
+                            :global TgAction "send"
+                            :global TgMessage ($MsgStatusCurrent . $MsgNewLine . $MsgPumpAutoStop . $workTimeMsg)
+                            /system script run Nasos-TG-Activator
                             :set LastStopTime [/system clock get time]
                             # Сохранение длительности работы
                             :set LastWorkDuration $workSeconds
@@ -210,12 +301,14 @@
                             # Формирование Telegram сообщения
                             :local telegramWorkMsg ""
                             :if ([:len $PoeStartTime] > 0) do={
-                                :local workMinutes ($workSeconds / 60)
-                                :local workSecondsRem ($workSeconds - ($workMinutes * 60))
-                                :set telegramWorkMsg ($MsgTimeWorkedHeader . " " . [:tostr $workMinutes] . $MsgTimeMin . [:tostr $workSecondsRem] . $MsgTimeSec)
+                                :set InputSeconds $workSeconds
+                                /system script run Nasos-TimeUtils
+                                :set telegramWorkMsg ($MsgTimeWorkedHeader . " " . $FormattedTelegram)
                             }
-                            :local telegramMsg ($MsgStatusHeader . " " . $MsgPumpStoppedTimeReduced . $MsgNewLine . $telegramWorkMsg)
-                            $sendTelegram $BotToken $ChatId $telegramMsg
+                            :local telegramMsg ($testModePrefix . $MsgStatusHeader . " " . $MsgPumpStoppedTimeReduced . $MsgNewLine . $telegramWorkMsg)
+                            :global TgAction "send"
+                            :global TgMessage $telegramMsg
+                            /system script run Nasos-TG-Activator
                             # Удаление таймера и очистка переменных
                             :if ([:len $PoeActiveTimer] > 0) do={
                                 :if ([:len [/system scheduler find name=$PoeActiveTimer]] > 0) do={
@@ -276,14 +369,18 @@
                             :log warning ($MsgTimeReduced . " " . $reducedTimeFormatted)
                             :log warning ($MsgTimeExpectedTotal . " " . $totalTimeFormatted)
                             # Отправка уведомления в Telegram (одно сообщение)
-                            :local telegramMsg ($MsgTimeReduced . " " . $reducedTimeFormatted . $MsgNewLine . $MsgTimeWorkedHeader . " " . $workTimeFormatted . $MsgNewLine . $MsgNewLine . $MsgTimeExpectedTotal . " " . $totalTimeFormatted)
-                            $sendTelegram $BotToken $ChatId $telegramMsg
+                            :local telegramMsg ($testModePrefix . $MsgTimeReduced . " " . $reducedTimeFormatted . $MsgNewLine . $MsgTimeWorkedHeader . " " . $workTimeFormatted . $MsgNewLine . $MsgNewLine . $MsgTimeExpectedTotal . " " . $totalTimeFormatted)
+                            :global TgAction "send"
+                            :global TgMessage $telegramMsg
+                            /system script run Nasos-TG-Activator
                             :set NewDuration ""
                         }
                     } else={
                         # Ошибка - нет активного таймера
                         :log error "Насос - Нет активного таймера"
-                        $sendTelegram $BotToken $ChatId ($MsgSysError . $MsgErrorNoActiveTimer)
+                        :global TgAction "send"
+                        :global TgMessage ($MsgSysError . $MsgErrorNoActiveTimer)
+                        /system script run Nasos-TG-Activator
                         :set NewDuration ""
                     }
                 } else={
@@ -330,8 +427,10 @@
                             :set InputSeconds $totalExpectedTime
                             /system script run Nasos-TimeUtils
                             :local telegramTotalMsg ($MsgTimeExpectedTotal . " " . $FormattedTelegram)
-                            :local telegramMsg ($MsgStatusHeader . " " . $MsgPumpAlreadyOn . $MsgNewLine . $MsgTimeRemaining . " " . $durationFormatted . $MsgNewLine . $telegramWorkMsg . $MsgNewLine . $telegramTotalMsg)
-                            $sendTelegram $BotToken $ChatId $telegramMsg
+                            :local telegramMsg ($testModePrefix . $MsgStatusHeader . " " . $MsgPumpAlreadyOn . $MsgNewLine . $MsgTimeRemaining . " " . $durationFormatted . $MsgNewLine . $telegramWorkMsg . $MsgNewLine . $telegramTotalMsg)
+                            :global TgAction "send"
+                            :global TgMessage $telegramMsg
+                            /system script run Nasos-TG-Activator
                             # Создание нового таймера с продленным временем
                             :local intervalHours ($NewDuration / 3600)
                             :local intervalMins (($NewDuration - ($intervalHours * 3600)) / 60)
@@ -370,14 +469,24 @@
                             :set PoeActiveTimer $timerName
                             :log warning ("Насос - Создан новый таймер: " . $timerName . " с интервалом: " . $newInterval . ", ожидаемая остановка: " . $ExpectedStopTime)
                         } else={
-                            # Запуск насоса
-                            /interface ethernet set [find name=$PoeMainInterface] poe-out=forced-on
+                            # Запуск насоса (тестовый или продуктивный режим)
+                            :if ($PoeMainInterface = "TEST") do={
+                                # Тестовый режим - эмуляция включения
+                                $testPoeControl $PoeMainInterface "forced-on"
+                                :log warning "Насос - POE ЭМУЛИРОВАННО ВКЛЮЧЕН (тестовый режим)"
+                            } else={
+                                # Продуктивный режим - реальное включение
+                                /interface ethernet set [find name=$PoeMainInterface] poe-out=forced-on
+                                :log warning "Насос - POE ФИЗИЧЕСКИ ВКЛЮЧЕН"
+                            }
                             :set PoeStartTime [/system clock get time]
                             :local logMsg ("Насос - НАСОС ЗАПУЩЕН на " . $durationMinutes . " минут " . $durationSeconds . " секунд")
                             :log warning $logMsg
                             # Отправка уведомления о запуске (используем TimeUtils)
-                            :local telegramMsg ($MsgStatusHeader . " " . $MsgPumpOn . $MsgNewLine . $MsgPumpStartedFor . " " . $durationFormatted)
-                            $sendTelegram $BotToken $ChatId $telegramMsg
+                            :local telegramMsg ($testModePrefix . $MsgStatusHeader . " " . $MsgPumpOn . $MsgNewLine . $MsgPumpStartedFor . " " . $durationFormatted)
+                            :global TgAction "send"
+                            :global TgMessage $telegramMsg
+                            /system script run Nasos-TG-Activator
                             # Создание таймера остановки
                             :local intervalHours ($NewDuration / 3600)
                             :local intervalMins (($NewDuration - ($intervalHours * 3600)) / 60)

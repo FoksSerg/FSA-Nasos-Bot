@@ -7,10 +7,7 @@
 :log info "Насос - Конфигурация автоматического запуска..."
 
 # Объявление глобальных переменных
-:global NasosInitStatus
-:global BotToken
-:global ChatId
-:global MsgSysReboot
+:global NasosInitStatus; :global BotToken; :global ChatId; :global MsgSysReboot
 
 # Инициализация модуля сообщений
 :log warning "Насос - Запуск Nasos-Messages"

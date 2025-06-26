@@ -18,15 +18,9 @@
 :global ChatId "YOUR_CHAT_ID"
 
 # Переменные состояния системы
-:global PoeActiveTimer
-:global PoeStartTime
-:global PoeTimerName "Nasos-POE-Timer"
-:global NewDuration
-:global TelegramHeartbeat
-:global LastUpdateId
-:global LastStopTime
-:global ExpectedStopTime
-:global MsgSysPoeDisabled
+:global PoeActiveTimer; :global PoeStartTime; :global PoeTimerName "Nasos-POE-Timer"; :global NewDuration; :global TelegramHeartbeat; :global LastUpdateId; :global LastStopTime; :global ExpectedStopTime; :global MsgSysPoeDisabled
+# Переменная для эмуляции POE статуса в тестовом режиме
+:global TestPoeStatus "off"
 
 # Инициализация модуля сообщений
 :log warning "Насос - Запуск Nasos-Messages"

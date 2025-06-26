@@ -7,65 +7,24 @@
 # Версия: 4.1 - Исправлено форматирование STATUS, добавлена защита от висящих таймеров
 
 # === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
-:global NasosInitStatus
-:global BotToken
-:global ChatId
-:global LastUpdateId
-:global TelegramHeartbeat
-:global NewDuration
-:global PoeMainInterface
-:global PoeStartTime
-:global PoeActiveTimer
-:global LastStopTime
-:global LastWorkDuration
-
+:global NasosInitStatus; :global BotToken; :global ChatId; :global LastUpdateId; :global TelegramHeartbeat
+:global NewDuration; :global PoeMainInterface; :global PoeStartTime; :global PoeActiveTimer; :global LastStopTime; :global LastWorkDuration
+# Переменная для эмуляции POE статуса в тестовом режиме
+:global TestPoeStatus
 # Переменные диспетчера
-:global TgAction
-:global TgMessage
-
+:global TgAction; :global TgMessage
 # Переменные сообщений (основные)
-:global MsgSysStarted
-:global MsgSysError
-:global MsgEmergencyShutdown
-:global MsgEmergencyReason
-:global MsgMenuHeader
-:global MsgNewLine
-:global MsgHeader
-:global MsgStatusHeader
-:global MsgPumpOn
-:global MsgPumpOff
-:global MsgStatusWorkingTime
-:global MsgStatusTimeLeft
-:global MsgStatusTimerExpired
-:global MsgStatusNoAutoStop
-:global MsgStatusStoppedTime
-:global MsgStatusTimeAgo
-:global MsgTimeExpectedTotal
-:global MsgStatusLastStopUnknown
-:global ExpectedStopTime
-:global MsgTimeWorkedHeader
-
+:global MsgSysStarted; :global MsgSysError; :global MsgEmergencyShutdown; :global MsgEmergencyReason; :global MsgMenuHeader; :global MsgNewLine; :global MsgHeader; :global MsgStatusHeader
+:global MsgPumpOn; :global MsgPumpOff; :global MsgStatusWorkingTime; :global MsgStatusTimeLeft; :global MsgStatusTimerExpired; :global MsgStatusNoAutoStop
+:global MsgStatusStoppedTime; :global MsgStatusTimeAgo; :global MsgTimeExpectedTotal; :global MsgStatusLastStopUnknown; :global ExpectedStopTime; :global MsgTimeWorkedHeader
 # Переменные модуля TimeUtils
-:global InputSeconds
-:global FormattedTelegram
-
+:global InputSeconds; :global FormattedTelegram
+# Функция эмуляции POE в тестовом режиме
+:global testPoeControl
 # Переменные нового опроса API
-:global TgLastCommand
-:global TgCommandTime
-:global TgPollStatus
-:global TgPollError
-:global TgPollHeartbeat
-:global TgStartMinutes
-
+:global TgLastCommand; :global TgCommandTime; :global TgPollStatus; :global TgPollError; :global TgPollHeartbeat; :global TgStartMinutes
 # Переменные команд меню
-:global MsgMenuStop
-:global MsgMenuStatus
-:global MsgMenuShow
-:global MsgMenuStart5
-:global MsgMenuStart10
-:global MsgMenuStart30
-:global MsgMenuStart60
-:global MsgMenuStart120
+:global MsgMenuStop; :global MsgMenuStatus; :global MsgMenuShow; :global MsgMenuStart5; :global MsgMenuStart10; :global MsgMenuStart30; :global MsgMenuStart60; :global MsgMenuStart120
 
 # === ФУНКЦИЯ РАСЧЕТА ВРЕМЕНИ ===
 :global timeToSeconds do={
@@ -82,6 +41,41 @@
         :return 0
     }
     :return ($hours * 3600 + $minutes * 60 + $seconds)
+}
+
+# === БЕЗОПАСНАЯ ФУНКЦИЯ ПРОВЕРКИ POE СТАТУСА ===
+:global safePoeStatus do={
+    :local interfaceName $1
+    :local defaultStatus $2
+    
+    # Защита от пустых параметров
+    :if ([:typeof $interfaceName] = "nothing" || [:len $interfaceName] = 0) do={
+        :log error "Насос - safePoeStatus: Не указан интерфейс!"
+        :return $defaultStatus
+    }
+    
+    # Тестовый режим - возвращаем эмулируемый статус
+    :if ($interfaceName = "TEST") do={
+        :global TestPoeStatus
+        :log info ("Насос - Тестовый режим: эмулируемый статус POE = " . $TestPoeStatus)
+        :return $TestPoeStatus
+    }
+    
+    # Безопасная проверка существования интерфейса
+    :do {
+        :local interfaceId [/interface ethernet find name=$interfaceName]
+        :if ([:len $interfaceId] = 0) do={
+            :log error ("Насос - Интерфейс '" . $interfaceName . "' не найден!")
+            :return "unavailable"
+        }
+        
+        # Получение POE статуса
+        :local poeStatus [/interface ethernet get $interfaceId poe-out]
+        :return $poeStatus
+    } on-error={
+        :log error ("Насос - Ошибка получения POE статуса для '" . $interfaceName . "'")
+        :return "unavailable"
+    }
 }
 
 :log info "Насос - Telegram v4.0: Запуск оптимизированной версии"
@@ -149,7 +143,7 @@
 :log info "Насос - Отправка приветственного сообщения..."
 
 # Определение текущего статуса насоса
-:local poeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
+:local poeStatus [$safePoeStatus $PoeMainInterface "off"]
 :local statusMsg
 :if ($poeStatus = "forced-on") do={
     :set statusMsg $MsgPumpOn
@@ -178,13 +172,20 @@
     :set TelegramHeartbeat [/system clock get time]
     
     # КРИТИЧЕСКАЯ ПРОВЕРКА: Насос не должен работать без автостопа!
-    :local poeStatus [/interface ethernet poe get $PoeMainInterface poe-out]
+    :local poeStatus [$safePoeStatus $PoeMainInterface "off"]
     :if ($poeStatus = "auto-on" || $poeStatus = "forced-on") do={
         :if ([:len $PoeActiveTimer] = 0 || [:len [/system scheduler find name=$PoeActiveTimer]] = 0) do={
             :log error "КРИТИЧНО: Насос работает без автостопа - принудительное отключение!"
             
             # Немедленное отключение насоса
-            /interface ethernet poe set $PoeMainInterface poe-out=off
+            :if ($PoeMainInterface = "TEST") do={
+                # Тестовый режим - эмуляция аварийного выключения
+                :global testPoeControl
+                $testPoeControl $PoeMainInterface "off"
+            } else={
+                # Продуктивный режим - реальное аварийное выключение
+                /interface ethernet poe set $PoeMainInterface poe-out=off
+            }
             
             # Расчет времени работы для отчета
             :local emergencyWorkSeconds 0
@@ -204,8 +205,8 @@
             # Сохранение данных об аварийной остановке
             :set LastStopTime [/system clock get time]
             :set LastWorkDuration $emergencyWorkSeconds
-                            :set PoeStartTime ""
-                :set ExpectedStopTime ""
+            :set PoeStartTime ""
+            :set ExpectedStopTime ""
             :set PoeActiveTimer ""
             
             # Принудительное удаление таймера по фиксированному имени
@@ -292,7 +293,7 @@
                 :set LastStopTime ""
             }
             # Проверка текущего состояния POE порта
-            :local poeStatus [/interface ethernet get [find name=$PoeMainInterface] poe-out]
+            :local poeStatus [$safePoeStatus $PoeMainInterface "off"]
             :local currentTime [/system clock get time]
             :local statusText ($MsgHeader . $MsgNewLine)
             
@@ -309,10 +310,10 @@
                     
                     # Защита от некорректных значений времени
                     :if ($startSeconds >= 0 && $currentSeconds >= 0) do={
-                    :set workSeconds ($currentSeconds - $startSeconds)
-                    :if ($workSeconds < 0) do={
-                        :set workSeconds ($workSeconds + 86400)
-                    }
+                        :set workSeconds ($currentSeconds - $startSeconds)
+                        :if ($workSeconds < 0) do={
+                            :set workSeconds ($workSeconds + 86400)
+                        }
                         
                         # Используем TimeUtils для форматирования с защитой
                         :if ($workSeconds >= 0) do={
@@ -382,16 +383,16 @@
                 :set statusText ($statusText . $MsgStatusHeader . " " . $MsgPumpOff)
             
                 # Расчет времени с момента остановки (показываем первым)
-            :if ([:len $LastStopTime] > 0) do={
+                :if ([:len $LastStopTime] > 0) do={
                     :local stopSeconds [$timeToSeconds $LastStopTime]
                     :local currentSeconds [$timeToSeconds $currentTime]
                     
                     # Защита от некорректных значений
                     :if ($stopSeconds >= 0 && $currentSeconds >= 0) do={
-                :local stopDiffSeconds ($currentSeconds - $stopSeconds)
-                :if ($stopDiffSeconds < 0) do={
-                    :set stopDiffSeconds ($stopDiffSeconds + 86400)
-                }
+                        :local stopDiffSeconds ($currentSeconds - $stopSeconds)
+                        :if ($stopDiffSeconds < 0) do={
+                            :set stopDiffSeconds ($stopDiffSeconds + 86400)
+                        }
                         
                         # Используем TimeUtils для форматирования с защитой
                         :if ($stopDiffSeconds >= 0) do={
@@ -406,7 +407,7 @@
                     } else={
                         :set statusText ($statusText . $MsgNewLine . $MsgStatusLastStopUnknown)
                     }
-            } else={
+                } else={
                     :set statusText ($statusText . $MsgNewLine . $MsgStatusLastStopUnknown)
                 }
                 

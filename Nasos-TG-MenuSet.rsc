@@ -5,16 +5,8 @@
 # Версия: 1.0
 
 # Объявление глобальных переменных
-:global BotToken
-:global TgMessage
-:global MsgMenuStop
-:global MsgMenuStatus
-:global MsgMenuStart5
-:global MsgMenuStart10
-:global MsgMenuStart30
-:global MsgMenuStart60
-:global MsgMenuStart120
-:global MsgMenuShow
+:global BotToken; :global TgMessage
+:global MsgMenuStop; :global MsgMenuStatus; :global MsgMenuStart5; :global MsgMenuStart10; :global MsgMenuStart30; :global MsgMenuStart60; :global MsgMenuStart120; :global MsgMenuShow
 
 :set TgMessage "NASOS TELEGRAM MENU SET"
 /system script run Nasos-TG-SendMessage

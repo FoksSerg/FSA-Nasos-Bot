@@ -1,80 +1,101 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Автоматический создатель компактных версий RouterOS скриптов
+Автоматический создатель компактных версий RouterOS скриптов (ПРОСТОЙ АЛГОРИТМ)
 Автор: Фокин Сергей Александрович
 Дата: 24 июня 2025
 
-Скрипт автоматически запускается при импорте или выполнении
+Простой алгоритм:
+1. если строка начинается с # - удаляем всю строку
+2. если строка пустая - удаляем  
+3. если есть отступы или пробелы в начале строки - удаляем отступы и пробелы
+4. если в конце строки нет ; и не заканчивается на \r\ - добавляем в конце ;
+5. если в конце строк \r\ - ничего не делаем
 """
 
 import os
 import sys
-import re
 from pathlib import Path
 
-def remove_comments(line):
-    """Удаляет комментарии из строки RouterOS"""
+
+
+def process_line(line):
+    """Обрабатывает одну строку согласно простому алгоритму"""
+    
+    # 1. если строка начинается с # - удаляем всю строку
     if line.strip().startswith('#'):
-        return ''
+        return None
     
-    in_string = False
-    quote_char = None
-    i = 0
+    # 2. если строка пустая - удаляем
+    if not line.strip():
+        return None
     
-    while i < len(line):
-        char = line[i]
-        
-        if char in ['"', "'"]:
-            if not in_string:
-                in_string = True
-                quote_char = char
-            elif char == quote_char:
-                if i == 0 or line[i-1] != '\\':
-                    in_string = False
-                    quote_char = None
-        elif char == '#' and not in_string:
-            return line[:i].rstrip()
-        
-        i += 1
+    # 3. если есть отступы или пробелы в начале строки - удаляем отступы и пробелы
+    line = line.lstrip()
+    
+    # 4. если в конце строки нет ; и не заканчивается на \r\ - добавляем в конце ;
+    stripped = line.rstrip()
+    if not stripped.endswith(';') and not stripped.endswith('\\r\\'):
+        # ИСКЛЮЧЕНИЕ: не добавляем ; к пустым блокам on-error и других специальных конструкций
+        # а также к строкам заканчивающимся на } или {
+        if not stripped.endswith('{}') and not stripped.endswith('do={') and not stripped.endswith('}') and not stripped.endswith('{'):
+            line = stripped + ';\n'
+        else:
+            line = line.rstrip() + '\n'
+    else:
+        # 5. если в конце строк \r\ - ничего не делаем
+        line = line.rstrip() + '\n'
     
     return line
 
 def compact_routeros_file(input_file, output_file):
     """Создает компактную версию RouterOS файла"""
     try:
-        if not os.path.exists(input_file):
-            return False, f"Файл не найден: {input_file}", 0, 0
+        # Преобразуем Path объекты в строки если нужно
+        input_path = Path(input_file)
+        output_path = Path(output_file)
         
-        with open(input_file, 'r', encoding='utf-8') as f:
+        if not input_path.exists():
+            return False, f"Файл не найден: {input_path}", 0, 0, 0
+        
+        with open(input_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
         
         original_size = sum(len(line.encode('utf-8')) for line in lines)
+        syntax_fixes = 0
         
         compact_lines = []
         for line in lines:
-            line = remove_comments(line)
-            line = line.lstrip().rstrip()
-            if line:
-                compact_lines.append(line + '\n')
+            processed_line = process_line(line)
+            
+            if processed_line is not None:
+                # Считаем количество исправлений (добавление ;)
+                if not line.rstrip().endswith(';') and processed_line.rstrip().endswith(';'):
+                    syntax_fixes += 1
+                
+                compact_lines.append(processed_line)
         
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(output_path, 'w', encoding='utf-8') as f:
             f.writelines(compact_lines)
         
         compact_size = sum(len(line.encode('utf-8')) for line in compact_lines)
         
-        return True, f"Создан: {output_file}", original_size, compact_size
+        return True, f"Создан: {output_path}", original_size, compact_size, syntax_fixes
         
     except Exception as e:
-        return False, f"Ошибка: {str(e)}", 0, 0
+        return False, f"Ошибка: {str(e)}", 0, 0, 0
 
 def auto_process_project():
     """Автоматически обрабатывает все .rsc файлы проекта"""
-    code_nasos_dir = Path("CodeNasos")
+    # Получаем директорию где лежит сам скрипт (исходные файлы на том же уровне)
+    script_dir = Path(__file__).parent
+    
+    # Создаем папку CodeNasos рядом со скриптом
+    code_nasos_dir = script_dir / "CodeNasos"
     code_nasos_dir.mkdir(exist_ok=True)
     
-    current_dir = Path(".")
-    rsc_files = list(current_dir.glob("*.rsc"))
+    # Ищем .rsc файлы в директории скрипта (на том же уровне)
+    rsc_files = list(script_dir.glob("*.rsc"))
     
     project_modules = []
     for file_path in rsc_files:
@@ -85,14 +106,14 @@ def auto_process_project():
             project_modules.append(file_path)
     
     if not project_modules:
-        return [(False, "Модули проекта Nasos-*.rsc не найдены", 0, 0)]
+        return [(False, "Модули проекта Nasos-*.rsc не найдены на том же уровне", 0, 0, 0)]
     
     results = []
     for module_path in project_modules:
         output_path = code_nasos_dir / module_path.name
-        success, message, orig_size, comp_size = compact_routeros_file(
-            str(module_path), str(output_path))
-        results.append((success, message, orig_size, comp_size))
+        success, message, orig_size, comp_size, fixes = compact_routeros_file(
+            module_path, output_path)
+        results.append((success, message, orig_size, comp_size, fixes))
     
     return results
 
@@ -113,11 +134,17 @@ def calculate_savings(original, compact):
 
 def run_auto_compact():
     """Основная функция автоматической обработки"""
-    print("=== Автоматический создатель компактных RouterOS скриптов ===")
+    print("=== Автоматический создатель компактных RouterOS скриптов (ПРОСТОЙ АЛГОРИТМ) ===")
     print("Автор: Фокин Сергей Александрович")
     print("Дата: 24 июня 2025")
     print()
-    print("🔄 Автоматическая обработка модулей проекта NasosRunner...")
+    print("🔄 Простой алгоритм компактирования:")
+    print("   1. Удаление комментариев (строки с #)")
+    print("   2. Удаление пустых строк")
+    print("   3. Удаление отступов и пробелов в начале")
+    print("   4. Добавление ; если нет и строка не заканчивается на \\r\\")
+    print("   5. Сохранение строк с \\r\\ без изменений")
+    print()
     print("📁 Создание компактных версий в папке CodeNasos/")
     print("-" * 80)
     
@@ -125,16 +152,22 @@ def run_auto_compact():
     
     total_original = 0
     total_compact = 0
+    total_fixes = 0
     success_count = 0
     
-    for success, message, orig_size, comp_size in results:
+    for success, message, orig_size, comp_size, fixes in results:
         print(f"{'✓' if success else '✗'} {message}")
         
         if success:
             print(f"  Оригинал: {format_size(orig_size)} → Компакт: {format_size(comp_size)} "
                   f"(экономия {calculate_savings(orig_size, comp_size):.1f}%)")
+            
+            if fixes > 0:
+                print(f"  🔧 Добавлено ; к командам: {fixes}")
+            
             total_original += orig_size
             total_compact += comp_size
+            total_fixes += fixes
             success_count += 1
         
         print()
@@ -146,6 +179,10 @@ def run_auto_compact():
         print(f"📦 Общий размер компактных: {format_size(total_compact)}")
         print(f"💾 Общая экономия: {format_size(total_original - total_compact)} "
               f"({calculate_savings(total_original, total_compact):.1f}%)")
+        
+        if total_fixes > 0:
+            print(f"🔧 Всего добавлено ; к командам: {total_fixes}")
+        
         print()
         print("🎯 Компактные модули готовы для загрузки в Winbox!")
     else:
@@ -154,9 +191,3 @@ def run_auto_compact():
 # АВТОЗАПУСК при выполнении скрипта
 if __name__ == "__main__":
     run_auto_compact()
-    
-    # Пауза для просмотра результатов
-    input("\nНажмите Enter для выхода...")
-
-# АВТОЗАПУСК при импорте (раскомментировать если нужно)
-run_auto_compact() 

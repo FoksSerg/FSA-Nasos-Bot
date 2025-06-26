@@ -5,10 +5,7 @@
 # Версия: 1.0
 
 # Объявление глобальных переменных
-:global BotToken
-:global ChatId
-:global TgMessage
-:global TgKeyboardType
+:global BotToken; :global ChatId; :global TgMessage; :global TgKeyboardType
 
 :log info "TG-SendKeyboard: Запуск отправки сообщения с клавиатурой"
 

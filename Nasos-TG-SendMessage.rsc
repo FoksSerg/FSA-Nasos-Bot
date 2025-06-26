@@ -5,9 +5,7 @@
 # Версия: 1.0
 
 # Объявление глобальных переменных
-:global BotToken
-:global ChatId
-:global TgMessage
+:global BotToken; :global ChatId; :global TgMessage
 
 :log info "TG-SendMessage: Запуск отправки сообщения"
 

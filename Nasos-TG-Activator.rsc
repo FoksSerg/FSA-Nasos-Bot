@@ -5,9 +5,7 @@
 # Версия: 1.2 - Добавлены действия "poll" и "process" для отказоустойчивой архитектуры
 
 # Объявление глобальных переменных
-:global TgAction
-:global TgMessage
-:global TgCleanupTime
+:global TgAction; :global TgMessage; :global TgCleanupTime
 
 # Проверка наличия параметров
 :if ([:len $TgAction] = 0 && [:len $TgMessage] = 0) do={

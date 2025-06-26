@@ -7,6 +7,10 @@
 
 # ===== NASOS TELEGRAM BOT MESSAGES =====
 
+# ===== 0. РЕЖМЫ РАБОТЫ =====
+# 🧪 ТЕСТОВЫЙ РЕЖИМ 💧
+:global MsgTestModeHeader "%F0%9F%A7%AA%20%D0%A2%D0%95%D0%A1%D0%A2%D0%9E%D0%92%D0%AB%D0%99%20%D0%A0%D0%95%D0%96%D0%98%D0%9C%20%F0%9F%92%A7"
+
 # ===== 1. СИСТЕМНЫЕ СООБЩЕНИЯ =====
 # Форматирование
 :global MsgNewLine "%0A"
@@ -43,6 +47,8 @@
 :global MsgPumpOn "%F0%9F%9F%A2%20%D0%9D%D0%B0%D1%81%D0%BE%D1%81%20%D0%B2%D0%BA%D0%BB%D1%8E%D1%87%D0%B5%D0%BD"
 # 🔴 Насос выключен
 :global MsgPumpOff "%F0%9F%94%B4%20%D0%9D%D0%B0%D1%81%D0%BE%D1%81%20%D0%B2%D1%8B%D0%BA%D0%BB%D1%8E%D1%87%D0%B5%D0%BD"
+# 🔶 Насос недоступен
+:global MsgPumpUnavailable "%F0%9F%94%B6%20%D0%9D%D0%B0%D1%81%D0%BE%D1%81%20%D0%BD%D0%B5%D0%B4%D0%BE%D1%81%D1%82%D1%83%D0%BF%D0%B5%D0%BD"
 # 🟢 Насос уже работает
 :global MsgPumpAlreadyOn "%F0%9F%9F%A2%20%D0%9D%D0%B0%D1%81%D0%BE%D1%81%20%D1%83%D0%B6%D0%B5%20%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D0%B0%D0%B5%D1%82"
 

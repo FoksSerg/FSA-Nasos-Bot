@@ -5,9 +5,7 @@
 # Версия: 1.0 - Отказоустойчивый опрос команд
 
 # Объявление глобальных переменных для работы с API
-:global BotToken
-:global ChatId
-:global LastUpdateId
+:global BotToken; :global ChatId; :global LastUpdateId
 
 # Переменные состояния опроса
 # TgLastCommand - Последняя полученная команда

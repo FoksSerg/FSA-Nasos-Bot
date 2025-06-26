@@ -5,11 +5,7 @@
 # Версия: 1.0
 
 # Объявление глобальных переменных
-:global formatTimeInterval
-:global calculateTimeDiff
-:global InputSeconds
-:global FormattedLog
-:global FormattedTelegram
+:global formatTimeInterval; :global calculateTimeDiff; :global InputSeconds; :global FormattedLog; :global FormattedTelegram
 
 # Функция форматирования временного интервала
 :global formatTimeInterval do={
