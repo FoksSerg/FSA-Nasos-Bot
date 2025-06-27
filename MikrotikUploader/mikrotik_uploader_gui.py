@@ -201,26 +201,24 @@ class MikrotikUploaderGUI:
         ttk.Button(file_buttons_frame, text="❌ Снять все", command=self.deselect_all_files).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(file_buttons_frame, text="🔄 Обновить", command=self.refresh_files_list).pack(side=tk.LEFT)
         
-        # Создаем Treeview для локальных файлов с чекбоксами
+        # Создаем Treeview для локальных файлов со стандартным выделением
         file_columns = ("name", "size", "modified")
-        self.files_tree = ttk.Treeview(local_frame, columns=file_columns, show="tree headings", height=20)
+        self.files_tree = ttk.Treeview(local_frame, columns=file_columns, show="headings", height=20, selectmode="extended")
         
         # Настройка колонок для файлов
-        self.files_tree.heading("#0", text="☑ Выбрать", command=lambda: self.sort_treeview(self.files_tree, "#0", False))
         self.files_tree.heading("name", text="Имя файла ↕", command=lambda: self.sort_treeview(self.files_tree, "name", False))
         self.files_tree.heading("size", text="Размер (байт) ↕", command=lambda: self.sort_treeview(self.files_tree, "size", True))
         self.files_tree.heading("modified", text="Изменен ↕", command=lambda: self.sort_treeview(self.files_tree, "modified", False))
         
-        self.files_tree.column("#0", width=80, anchor=tk.CENTER)
-        self.files_tree.column("name", width=200, anchor=tk.W)
-        self.files_tree.column("size", width=100, anchor=tk.E)
-        self.files_tree.column("modified", width=150, anchor=tk.W)
+        self.files_tree.column("name", width=250, anchor=tk.W)
+        self.files_tree.column("size", width=120, anchor=tk.E)
+        self.files_tree.column("modified", width=180, anchor=tk.W)
         
         # Применяем стиль
         self.files_tree.configure(style="Custom.Treeview")
         
-        # Привязываем обработчик клика для чекбоксов
-        self.files_tree.bind("<Button-1>", self.on_file_tree_click)
+        # Привязываем обработчик выделения для автообновления информации о загрузке
+        self.files_tree.bind("<<TreeviewSelect>>", lambda e: self.update_upload_info())
         
         scrollbar_files = ttk.Scrollbar(local_frame, orient=tk.VERTICAL, command=self.files_tree.yview)
         self.files_tree.configure(yscrollcommand=scrollbar_files.set)
@@ -271,34 +269,16 @@ class MikrotikUploaderGUI:
         files_frame.columnconfigure(0, weight=1)
         files_frame.rowconfigure(1, weight=1)
         
-        # Переменные для работы с файлами
-        self.file_vars = {}  # Словарь переменных чекбоксов для файлов
+        # Переменные для работы с файлами удалены - используется стандартное выделение
     
-    def on_file_tree_click(self, event):
-        """Обработчик клика по дереву файлов для переключения чекбоксов."""
-        region = self.files_tree.identify_region(event.x, event.y)
-        if region == "tree":
-            item = self.files_tree.identify_row(event.y)
-            if item:
-                # Переключаем состояние чекбокса
-                current_text = self.files_tree.item(item, "text")
-                if current_text.startswith("☑"):
-                    self.files_tree.item(item, text="☐")
-                    self.file_vars[item] = False
-                else:
-                    self.files_tree.item(item, text="☑")
-                    self.file_vars[item] = True
-                
-                # Обновляем информацию о загрузке
-                self.update_upload_info()
-                return "break"  # Предотвращаем стандартное поведение
+
     
     def create_content_tab(self):
         """Вкладка просмотра содержимого роутера."""
         content_frame = ttk.Frame(self.notebook, padding="10")
         self.notebook.add(content_frame, text="📋 Содержимое")
         
-        # Кнопка подключения
+        # Кнопка подключения и управления
         connect_frame = ttk.Frame(content_frame)
         connect_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         
@@ -308,75 +288,164 @@ class MikrotikUploaderGUI:
         self.content_status_var = tk.StringVar(value="Не подключен")
         ttk.Label(connect_frame, textvariable=self.content_status_var).pack(side=tk.LEFT)
         
-        # Списки содержимого
-        lists_frame = ttk.Frame(content_frame)
-        lists_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Главный PanedWindow - горизонтальное разделение (скрипты | правая часть)
+        main_paned = ttk.PanedWindow(content_frame, orient=tk.HORIZONTAL)
+        main_paned.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Скрипты
-        scripts_frame = ttk.LabelFrame(lists_frame, text="Скрипты на роутере", padding="5")
-        scripts_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
+        # ЛЕВАЯ ЧАСТЬ: Скрипты с кнопками управления
+        scripts_main_frame = ttk.Frame(main_paned)
+        main_paned.add(scripts_main_frame, weight=1)
         
-        # Создаем Treeview для скриптов с колонками
+        scripts_frame = ttk.LabelFrame(scripts_main_frame, text="Скрипты на роутере", padding="5")
+        scripts_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Кнопки управления скриптами
+        scripts_buttons_frame = ttk.Frame(scripts_frame)
+        scripts_buttons_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
+        
+        ttk.Button(scripts_buttons_frame, text="🔄 Обновить", 
+                  command=self.refresh_router_scripts).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(scripts_buttons_frame, text="🗑️ Удалить выбранные", 
+                  command=self.delete_selected_scripts).pack(side=tk.LEFT)
+        
+        # Список скриптов
         script_columns = ("name", "size")
-        self.scripts_tree = ttk.Treeview(scripts_frame, columns=script_columns, show="headings", height=15)
+        self.router_scripts_tree = ttk.Treeview(scripts_frame, columns=script_columns, 
+                                               show="headings", height=20, selectmode="extended")
         
-        # Настройка колонок скриптов
-        self.scripts_tree.heading("name", text="Имя скрипта ↕", command=lambda: self.sort_treeview(self.scripts_tree, "name", False))
-        self.scripts_tree.heading("size", text="Размер (байт) ↕", command=lambda: self.sort_treeview(self.scripts_tree, "size", True))
+        self.router_scripts_tree.heading("name", text="Имя скрипта ↕", 
+                                         command=lambda: self.sort_treeview(self.router_scripts_tree, "name", False))
+        self.router_scripts_tree.heading("size", text="Размер ↕", 
+                                         command=lambda: self.sort_treeview(self.router_scripts_tree, "size", True))
         
-        self.scripts_tree.column("name", width=300, anchor=tk.W)
-        self.scripts_tree.column("size", width=150, anchor=tk.E)
+        self.router_scripts_tree.column("name", width=280, anchor=tk.W)
+        self.router_scripts_tree.column("size", width=100, anchor=tk.E)
         
-        # Увеличиваем шрифт еще больше
         style = ttk.Style()
-        style.configure("Custom.Treeview", font=('Arial', 14), rowheight=25)
-        style.configure("Custom.Treeview.Heading", font=('Arial', 12, 'bold'))
-        self.scripts_tree.configure(style="Custom.Treeview")
+        style.configure("Custom.Treeview", font=('Arial', 12), rowheight=22)
+        style.configure("Custom.Treeview.Heading", font=('Arial', 11, 'bold'))
+        self.router_scripts_tree.configure(style="Custom.Treeview")
         
-        scrollbar_scripts = ttk.Scrollbar(scripts_frame, orient=tk.VERTICAL, command=self.scripts_tree.yview)
-        self.scripts_tree.configure(yscrollcommand=scrollbar_scripts.set)
+        scrollbar_router_scripts = ttk.Scrollbar(scripts_frame, orient=tk.VERTICAL, 
+                                                command=self.router_scripts_tree.yview)
+        self.router_scripts_tree.configure(yscrollcommand=scrollbar_router_scripts.set)
         
-        self.scripts_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        scrollbar_scripts.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.router_scripts_tree.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scrollbar_router_scripts.grid(row=1, column=1, sticky=(tk.N, tk.S))
         
         scripts_frame.columnconfigure(0, weight=1)
-        scripts_frame.rowconfigure(0, weight=1)
+        scripts_frame.rowconfigure(1, weight=1)
+        scripts_main_frame.columnconfigure(0, weight=1)
+        scripts_main_frame.rowconfigure(0, weight=1)
         
-        # Шедулеры
-        schedulers_frame = ttk.LabelFrame(lists_frame, text="Шедулеры на роутере", padding="5")
-        schedulers_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(5, 0))
+        # ПРАВАЯ ЧАСТЬ: Вертикальный PanedWindow для шедулеров и задач
+        right_paned = ttk.PanedWindow(main_paned, orient=tk.VERTICAL)
+        main_paned.add(right_paned, weight=1)
         
-        # Создаем Treeview для шедулеров с колонками
+        # ШЕДУЛЕРЫ (верхняя правая часть)
+        schedulers_main_frame = ttk.Frame(right_paned)
+        right_paned.add(schedulers_main_frame, weight=1)
+        
+        schedulers_frame = ttk.LabelFrame(schedulers_main_frame, text="Шедулеры на роутере", padding="5")
+        schedulers_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Кнопки управления шедулерами
+        schedulers_buttons_frame = ttk.Frame(schedulers_frame)
+        schedulers_buttons_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
+        
+        ttk.Button(schedulers_buttons_frame, text="🔄 Обновить", 
+                  command=self.refresh_router_schedulers).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(schedulers_buttons_frame, text="🗑️ Удалить", 
+                  command=self.delete_selected_schedulers).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(schedulers_buttons_frame, text="▶️ Включить", 
+                  command=self.enable_selected_schedulers).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(schedulers_buttons_frame, text="⏸️ Отключить", 
+                  command=self.disable_selected_schedulers).pack(side=tk.LEFT)
+        
+        # Список шедулеров
         scheduler_columns = ("name", "status", "next_run")
-        self.schedulers_tree = ttk.Treeview(schedulers_frame, columns=scheduler_columns, show="headings", height=15)
+        self.router_schedulers_tree = ttk.Treeview(schedulers_frame, columns=scheduler_columns, 
+                                                  show="headings", height=10, selectmode="extended")
         
-        # Настройка колонок шедулеров
-        self.schedulers_tree.heading("name", text="Имя шедулера ↕", command=lambda: self.sort_treeview(self.schedulers_tree, "name", False))
-        self.schedulers_tree.heading("status", text="Статус ↕", command=lambda: self.sort_treeview(self.schedulers_tree, "status", False))
-        self.schedulers_tree.heading("next_run", text="Следующий запуск ↕", command=lambda: self.sort_treeview(self.schedulers_tree, "next_run", False))
+        self.router_schedulers_tree.heading("name", text="Имя ↕", 
+                                           command=lambda: self.sort_treeview(self.router_schedulers_tree, "name", False))
+        self.router_schedulers_tree.heading("status", text="Статус ↕", 
+                                           command=lambda: self.sort_treeview(self.router_schedulers_tree, "status", False))
+        self.router_schedulers_tree.heading("next_run", text="Следующий запуск ↕", 
+                                           command=lambda: self.sort_treeview(self.router_schedulers_tree, "next_run", False))
         
-        self.schedulers_tree.column("name", width=250, anchor=tk.W)
-        self.schedulers_tree.column("status", width=100, anchor=tk.CENTER)
-        self.schedulers_tree.column("next_run", width=200, anchor=tk.W)
+        self.router_schedulers_tree.column("name", width=180, anchor=tk.W)
+        self.router_schedulers_tree.column("status", width=60, anchor=tk.CENTER)
+        self.router_schedulers_tree.column("next_run", width=120, anchor=tk.W)
         
-        # Применяем тот же стиль шрифта
-        self.schedulers_tree.configure(style="Custom.Treeview")
+        self.router_schedulers_tree.configure(style="Custom.Treeview")
         
-        scrollbar_schedulers = ttk.Scrollbar(schedulers_frame, orient=tk.VERTICAL, command=self.schedulers_tree.yview)
-        self.schedulers_tree.configure(yscrollcommand=scrollbar_schedulers.set)
+        scrollbar_router_schedulers = ttk.Scrollbar(schedulers_frame, orient=tk.VERTICAL, 
+                                                   command=self.router_schedulers_tree.yview)
+        self.router_schedulers_tree.configure(yscrollcommand=scrollbar_router_schedulers.set)
         
-        self.schedulers_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        scrollbar_schedulers.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.router_schedulers_tree.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scrollbar_router_schedulers.grid(row=1, column=1, sticky=(tk.N, tk.S))
         
         schedulers_frame.columnconfigure(0, weight=1)
-        schedulers_frame.rowconfigure(0, weight=1)
+        schedulers_frame.rowconfigure(1, weight=1)
+        schedulers_main_frame.columnconfigure(0, weight=1)
+        schedulers_main_frame.rowconfigure(0, weight=1)
         
-        # Настройка растягивания
+        # ЗАДАЧИ (нижняя правая часть)
+        jobs_main_frame = ttk.Frame(right_paned)
+        right_paned.add(jobs_main_frame, weight=1)
+        
+        jobs_frame = ttk.LabelFrame(jobs_main_frame, text="Задачи на роутере", padding="5")
+        jobs_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Кнопки управления задачами
+        jobs_buttons_frame = ttk.Frame(jobs_frame)
+        jobs_buttons_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
+        
+        ttk.Button(jobs_buttons_frame, text="🔄 Обновить", 
+                  command=self.refresh_router_jobs).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(jobs_buttons_frame, text="⏹️ Остановить", 
+                  command=self.stop_selected_jobs).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(jobs_buttons_frame, text="🧹 Удалить завершенные", 
+                  command=self.remove_finished_jobs).pack(side=tk.LEFT)
+        
+        # Список задач
+        job_columns = ("id", "script", "status", "duration")
+        self.router_jobs_tree = ttk.Treeview(jobs_frame, columns=job_columns, 
+                                            show="headings", height=8, selectmode="extended")
+        
+        self.router_jobs_tree.heading("id", text="ID ↕", 
+                                     command=lambda: self.sort_treeview(self.router_jobs_tree, "id", True))
+        self.router_jobs_tree.heading("script", text="Скрипт ↕", 
+                                     command=lambda: self.sort_treeview(self.router_jobs_tree, "script", False))
+        self.router_jobs_tree.heading("status", text="Статус ↕", 
+                                     command=lambda: self.sort_treeview(self.router_jobs_tree, "status", False))
+        self.router_jobs_tree.heading("duration", text="Длительность ↕", 
+                                     command=lambda: self.sort_treeview(self.router_jobs_tree, "duration", False))
+        
+        self.router_jobs_tree.column("id", width=50, anchor=tk.CENTER)
+        self.router_jobs_tree.column("script", width=150, anchor=tk.W)
+        self.router_jobs_tree.column("status", width=70, anchor=tk.CENTER)
+        self.router_jobs_tree.column("duration", width=90, anchor=tk.CENTER)
+        
+        self.router_jobs_tree.configure(style="Custom.Treeview")
+        
+        scrollbar_router_jobs = ttk.Scrollbar(jobs_frame, orient=tk.VERTICAL, 
+                                             command=self.router_jobs_tree.yview)
+        self.router_jobs_tree.configure(yscrollcommand=scrollbar_router_jobs.set)
+        
+        self.router_jobs_tree.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scrollbar_router_jobs.grid(row=1, column=1, sticky=(tk.N, tk.S))
+        
+        jobs_frame.columnconfigure(0, weight=1)
+        jobs_frame.rowconfigure(1, weight=1)
+        jobs_main_frame.columnconfigure(0, weight=1)
+        jobs_main_frame.rowconfigure(0, weight=1)
+        
+        # Настройка растягивания главного фрейма
         content_frame.columnconfigure(0, weight=1)
         content_frame.rowconfigure(1, weight=1)
-        lists_frame.columnconfigure(0, weight=1)
-        lists_frame.columnconfigure(1, weight=1)
-        lists_frame.rowconfigure(0, weight=1)
     
     def create_upload_tab(self):
         """Вкладка загрузки файлов."""
@@ -521,27 +590,27 @@ class MikrotikUploaderGUI:
             # Ширины колонок скриптов
             if 'scripts' in self.saved_column_widths:
                 scripts_widths = self.saved_column_widths['scripts']
-                if 'name' in scripts_widths:
-                    self.scripts_tree.column('name', width=scripts_widths['name'])
-                if 'size' in scripts_widths:
-                    self.scripts_tree.column('size', width=scripts_widths['size'])
+                if hasattr(self, 'router_scripts_tree'):
+                    if 'name' in scripts_widths:
+                        self.router_scripts_tree.column('name', width=scripts_widths['name'])
+                    if 'size' in scripts_widths:
+                        self.router_scripts_tree.column('size', width=scripts_widths['size'])
             
             # Ширины колонок шедулеров
             if 'schedulers' in self.saved_column_widths:
                 schedulers_widths = self.saved_column_widths['schedulers']
-                if 'name' in schedulers_widths:
-                    self.schedulers_tree.column('name', width=schedulers_widths['name'])
-                if 'status' in schedulers_widths:
-                    self.schedulers_tree.column('status', width=schedulers_widths['status'])
-                if 'next_run' in schedulers_widths:
-                    self.schedulers_tree.column('next_run', width=schedulers_widths['next_run'])
+                if hasattr(self, 'router_schedulers_tree'):
+                    if 'name' in schedulers_widths:
+                        self.router_schedulers_tree.column('name', width=schedulers_widths['name'])
+                    if 'status' in schedulers_widths:
+                        self.router_schedulers_tree.column('status', width=schedulers_widths['status'])
+                    if 'next_run' in schedulers_widths:
+                        self.router_schedulers_tree.column('next_run', width=schedulers_widths['next_run'])
             
             # Ширины колонок файлов
             if 'files' in self.saved_column_widths:
                 files_widths = self.saved_column_widths['files']
                 if hasattr(self, 'files_tree'):
-                    if 'selected' in files_widths:
-                        self.files_tree.column('#0', width=files_widths['selected'])
                     if 'name' in files_widths:
                         self.files_tree.column('name', width=files_widths['name'])
                     if 'size' in files_widths:
@@ -657,20 +726,19 @@ class MikrotikUploaderGUI:
             
             # Сохраняем ширины колонок
             column_widths = {}
-            if hasattr(self, 'scripts_tree'):
+            if hasattr(self, 'router_scripts_tree'):
                 column_widths['scripts'] = {
-                    'name': self.scripts_tree.column('name', 'width'),
-                    'size': self.scripts_tree.column('size', 'width')
+                    'name': self.router_scripts_tree.column('name', 'width'),
+                    'size': self.router_scripts_tree.column('size', 'width')
                 }
-            if hasattr(self, 'schedulers_tree'):
+            if hasattr(self, 'router_schedulers_tree'):
                 column_widths['schedulers'] = {
-                    'name': self.schedulers_tree.column('name', 'width'),
-                    'status': self.schedulers_tree.column('status', 'width'),
-                    'next_run': self.schedulers_tree.column('next_run', 'width')
+                    'name': self.router_schedulers_tree.column('name', 'width'),
+                    'status': self.router_schedulers_tree.column('status', 'width'),
+                    'next_run': self.router_schedulers_tree.column('next_run', 'width')
                 }
             if hasattr(self, 'files_tree'):
                 column_widths['files'] = {
-                    'selected': self.files_tree.column('#0', 'width'),
                     'name': self.files_tree.column('name', 'width'),
                     'size': self.files_tree.column('size', 'width'),
                     'modified': self.files_tree.column('modified', 'width')
@@ -910,7 +978,6 @@ class MikrotikUploaderGUI:
         """Обновление списка файлов."""
         # Очищаем дерево файлов
         self.files_tree.delete(*self.files_tree.get_children())
-        self.file_vars.clear()
         
         if not self.source_directory or not os.path.exists(self.source_directory):
             return
@@ -938,28 +1005,20 @@ class MikrotikUploaderGUI:
             except:
                 mod_date = "неизвестно"
             
-            # Добавляем элемент в дерево (по умолчанию не выбран)
-            item_id = self.files_tree.insert('', 'end', 
-                                           text="☐",  # Чекбокс не выбран
-                                           values=(filename, file_size, mod_date))
-            
-            # Сохраняем состояние выбора
-            self.file_vars[item_id] = False
+            # Добавляем элемент в дерево (стандартный список без чекбоксов)
+            self.files_tree.insert('', 'end', values=(filename, file_size, mod_date))
         
         self.update_upload_info()
     
     def select_all_files(self):
         """Выбрать все файлы."""
-        for item in self.files_tree.get_children():
-            self.files_tree.item(item, text="☑")
-            self.file_vars[item] = True
+        all_items = self.files_tree.get_children()
+        self.files_tree.selection_set(all_items)
         self.update_upload_info()
     
     def deselect_all_files(self):
         """Снять выбор со всех файлов."""
-        for item in self.files_tree.get_children():
-            self.files_tree.item(item, text="☐")
-            self.file_vars[item] = False
+        self.files_tree.selection_remove(self.files_tree.selection())
         self.update_upload_info()
     
     def update_upload_info(self):
@@ -968,12 +1027,13 @@ class MikrotikUploaderGUI:
         if not hasattr(self, 'upload_info_text') or not hasattr(self, 'start_button'):
             return
             
+        # Получаем выбранные файлы через стандартное выделение
+        selected_items = self.files_tree.selection()
         selected_files = []
-        for item_id, is_selected in self.file_vars.items():
-            if is_selected:
-                values = self.files_tree.item(item_id, 'values')
-                if values:
-                    selected_files.append(values[0])  # Имя файла
+        for item_id in selected_items:
+            values = self.files_tree.item(item_id, 'values')
+            if values:
+                selected_files.append(values[0])  # Имя файла
         
         info_text = ""
         if self.selected_router:
@@ -1083,19 +1143,19 @@ class MikrotikUploaderGUI:
                 
                 # Обновляем интерфейс
                 def update_lists():
-                    # Очищаем и заполняем скрипты
-                    for item in self.scripts_tree.get_children():
-                        self.scripts_tree.delete(item)
+                    # Очищаем и заполняем скрипты в router_scripts_tree
+                    for item in self.router_scripts_tree.get_children():
+                        self.router_scripts_tree.delete(item)
                     
                     for script_name, script_size in sorted(scripts):
-                        self.scripts_tree.insert("", tk.END, values=(script_name, script_size))
+                        self.router_scripts_tree.insert("", tk.END, values=(script_name, script_size))
                     
-                    # Очищаем и заполняем шедулеры
-                    for item in self.schedulers_tree.get_children():
-                        self.schedulers_tree.delete(item)
+                    # Очищаем и заполняем шедулеры в router_schedulers_tree
+                    for item in self.router_schedulers_tree.get_children():
+                        self.router_schedulers_tree.delete(item)
                     
                     for scheduler_name, status, next_run in sorted(schedulers):
-                        self.schedulers_tree.insert("", tk.END, values=(scheduler_name, status, next_run))
+                        self.router_schedulers_tree.insert("", tk.END, values=(scheduler_name, status, next_run))
                     
                     self.content_status_var.set(f"Скриптов: {len(scripts)}, Шедулеров: {len(schedulers)}")
                 
@@ -1130,13 +1190,13 @@ class MikrotikUploaderGUI:
     def upload_worker(self):
         """Рабочий поток загрузки файлов."""
         try:
-            # Получаем выбранные файлы из нового интерфейса
+            # Получаем выбранные файлы через стандартное выделение
+            selected_items = self.files_tree.selection()
             selected_files = []
-            for item_id, is_selected in self.file_vars.items():
-                if is_selected:
-                    values = self.files_tree.item(item_id, 'values')
-                    if values:
-                        selected_files.append(values[0])  # Имя файла
+            for item_id in selected_items:
+                values = self.files_tree.item(item_id, 'values')
+                if values:
+                    selected_files.append(values[0])  # Имя файла
             
             total_files = len(selected_files)
             
@@ -1222,6 +1282,139 @@ class MikrotikUploaderGUI:
             self.root.after(0, lambda: self.stop_button.config(state=tk.DISABLED))
             self.root.after(0, self.update_upload_info)
     
+    def refresh_router_scripts(self):
+        """Обновление списка скриптов на роутере"""
+        if not self.selected_router:
+            messagebox.showwarning("Предупреждение", "Сначала выберите роутер")
+            return
+        self.load_router_content()
+    
+    def refresh_router_schedulers(self):
+        """Обновление списка шедулеров на роутере"""
+        if not self.selected_router:
+            messagebox.showwarning("Предупреждение", "Сначала выберите роутер")
+            return
+        self.load_router_content()
+    
+    def refresh_router_jobs(self):
+        """Обновление списка задач на роутере"""
+        if not self.selected_router:
+            messagebox.showwarning("Предупреждение", "Сначала выберите роутер")
+            return
+        self.load_router_jobs()
+    
+    def delete_selected_scripts(self):
+        """Удаление выбранных скриптов"""
+        selected_items = self.router_scripts_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Предупреждение", "Выберите скрипты для удаления")
+            return
+        
+        scripts_to_delete = []
+        for item in selected_items:
+            script_name = self.router_scripts_tree.item(item)['values'][0]
+            scripts_to_delete.append(script_name)
+        
+        if messagebox.askyesno("Подтверждение", 
+                              f"Удалить {len(scripts_to_delete)} скрипт(ов)?"):
+            # Здесь будет код удаления через API
+            self.log_message(f"Удаление скриптов: {scripts_to_delete}", "INFO")
+    
+    def delete_selected_schedulers(self):
+        """Удаление выбранных шедулеров"""
+        selected_items = self.router_schedulers_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Предупреждение", "Выберите шедулеры для удаления")
+            return
+        
+        schedulers_to_delete = []
+        for item in selected_items:
+            scheduler_name = self.router_schedulers_tree.item(item)['values'][0]
+            schedulers_to_delete.append(scheduler_name)
+        
+        if messagebox.askyesno("Подтверждение", 
+                              f"Удалить {len(schedulers_to_delete)} шедулер(ов)?"):
+            # Здесь будет код удаления через API
+            self.log_message(f"Удаление шедулеров: {schedulers_to_delete}", "INFO")
+    
+    def enable_selected_schedulers(self):
+        """Включение выбранных шедулеров"""
+        selected_items = self.router_schedulers_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Предупреждение", "Выберите шедулеры для включения")
+            return
+        
+        schedulers_to_enable = []
+        for item in selected_items:
+            scheduler_name = self.router_schedulers_tree.item(item)['values'][0]
+            schedulers_to_enable.append(scheduler_name)
+        
+        # Здесь будет код включения через API
+        self.log_message(f"Включение шедулеров: {schedulers_to_enable}", "INFO")
+    
+    def disable_selected_schedulers(self):
+        """Отключение выбранных шедулеров"""
+        selected_items = self.router_schedulers_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Предупреждение", "Выберите шедулеры для отключения")
+            return
+        
+        schedulers_to_disable = []
+        for item in selected_items:
+            scheduler_name = self.router_schedulers_tree.item(item)['values'][0]
+            schedulers_to_disable.append(scheduler_name)
+        
+        # Здесь будет код отключения через API
+        self.log_message(f"Отключение шедулеров: {schedulers_to_disable}", "INFO")
+    
+    def stop_selected_jobs(self):
+        """Остановка выбранных задач"""
+        selected_items = self.router_jobs_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Предупреждение", "Выберите задачи для остановки")
+            return
+        
+        jobs_to_stop = []
+        for item in selected_items:
+            job_id = self.router_jobs_tree.item(item)['values'][0]
+            jobs_to_stop.append(job_id)
+        
+        # Здесь будет код остановки через API
+        self.log_message(f"Остановка задач: {jobs_to_stop}", "INFO")
+    
+    def remove_finished_jobs(self):
+        """Удаление завершенных задач"""
+        # Здесь будет код удаления завершенных задач через API
+        self.log_message("Удаление завершенных задач", "INFO")
+    
+    def load_router_jobs(self):
+        """Загрузка списка задач с роутера"""
+        if not self.selected_router:
+            return
+        
+        def load_jobs_thread():
+            try:
+                # Здесь будет код загрузки задач через API
+                # Пока заглушка
+                jobs = [
+                    {"id": "1", "script": "test-script", "status": "running", "duration": "00:05:30"},
+                    {"id": "2", "script": "backup-script", "status": "finished", "duration": "00:01:15"}
+                ]
+                
+                def update_jobs_ui():
+                    self.router_jobs_tree.delete(*self.router_jobs_tree.get_children())
+                    for job in jobs:
+                        self.router_jobs_tree.insert('', 'end', values=(
+                            job['id'], job['script'], job['status'], job['duration']
+                        ))
+                
+                self.root.after(0, update_jobs_ui)
+                
+            except Exception as e:
+                self.log_message(f"Ошибка загрузки задач: {e}", "ERROR")
+        
+        threading.Thread(target=load_jobs_thread, daemon=True).start()
+
     def on_closing(self):
         """Обработчик закрытия приложения."""
         # Останавливаем загрузку если она идет
@@ -1356,18 +1549,18 @@ class MikrotikUploaderGUI:
                 self.log_message(f"🎯 Автообновление завершено: {len(scripts)} скриптов, {len(schedulers)} шедулеров", "INFO")
                 
                 def update_ui():
-                    # Очищаем и обновляем скрипты
-                    self.scripts_tree.delete(*self.scripts_tree.get_children())
+                    # Очищаем и обновляем скрипты в router_scripts_tree
+                    self.router_scripts_tree.delete(*self.router_scripts_tree.get_children())
                     for script in scripts:
                         size = f"{len(script.get('source', ''))}"
-                        self.scripts_tree.insert('', 'end', values=(script['name'], size))
+                        self.router_scripts_tree.insert('', 'end', values=(script['name'], size))
                     
-                    # Очищаем и обновляем шедулеры
-                    self.schedulers_tree.delete(*self.schedulers_tree.get_children())
+                    # Очищаем и обновляем шедулеры в router_schedulers_tree
+                    self.router_schedulers_tree.delete(*self.router_schedulers_tree.get_children())
                     for scheduler in schedulers:
                         status = "✓" if scheduler.get('disabled') == 'false' else "✗"
                         next_run = scheduler.get('next-run', 'никогда')
-                        self.schedulers_tree.insert('', 'end', values=(scheduler['name'], status, next_run))
+                        self.router_schedulers_tree.insert('', 'end', values=(scheduler['name'], status, next_run))
                     
                     # Обновляем список файлов на роутере
                     if hasattr(self, 'remote_scripts_tree'):

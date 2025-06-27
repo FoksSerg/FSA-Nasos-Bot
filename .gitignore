@@ -72,3 +72,4 @@ Debug-*.rsc
 
 # Конфиденциальные данные
 MikrotikUploader/mikrotik_config.json
+MikrotikUploader/uploader_settings.json
