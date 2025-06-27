@@ -59,16 +59,16 @@ Thumbs.db
 *token*
 *secret*
 config.local.*
-Nasos-Init.rsc
+RazrabNasos/Nasos-Init.rsc
 
-# Тестовые файлы RouterOS
+# Тестовые файлы RouterOS (только конкретные паттерны)
 Test-*.rsc
 Debug-*.rsc
 *-test.rsc
 *-debug.rsc
 
-# Тестовые файлы
-Test/
+# Папка RazrabNasos ВКЛЮЧЕНА в коммиты для разработки
+# Test/ папка теперь ВКЛЮЧЕНА в коммиты
 
 # Конфиденциальные данные
 MikrotikUploader/mikrotik_config.json
