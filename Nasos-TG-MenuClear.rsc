@@ -20,19 +20,19 @@
 
     # 1. Очистка меню (default)
     :log info "TG-MenuClear: Очистка меню (default)"
-            :local clearMenuUrl ("https://api.telegram.org/bot" . $BotToken . "/deleteMyCommands\?scope=\{\"type\":\"default\"\}");
+    :local clearMenuUrl ("https://api.telegram.org/bot" . $BotToken . "/deleteMyCommands\?scope=\{\"type\":\"default\"\}");
     /tool fetch url=$clearMenuUrl http-method=post keep-result=no;
     :delay 1s
 
     # 2. Очистка меню (all_private_chats)
     :log info "TG-MenuClear: Очистка меню (all_private_chats)"
-            :local clearMenuUrl ("https://api.telegram.org/bot" . $BotToken . "/deleteMyCommands\?scope=\{\"type\":\"all_private_chats\"\}");
+    :local clearMenuUrl ("https://api.telegram.org/bot" . $BotToken . "/deleteMyCommands\?scope=\{\"type\":\"all_private_chats\"\}");
     /tool fetch url=$clearMenuUrl http-method=post keep-result=no;
     :delay 1s
 
     # 3. Очистка меню (all_group_chats)
     :log info "TG-MenuClear: Очистка меню (all_group_chats)"
-            :local clearMenuUrl ("https://api.telegram.org/bot" . $BotToken . "/deleteMyCommands\?scope=\{\"type\":\"all_group_chats\"\}");
+    :local clearMenuUrl ("https://api.telegram.org/bot" . $BotToken . "/deleteMyCommands\?scope=\{\"type\":\"all_group_chats\"\}");
     /tool fetch url=$clearMenuUrl http-method=post keep-result=no;
 
     :log warning "TG-MenuClear: Очистка меню завершена для всех областей видимости"

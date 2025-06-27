@@ -93,5 +93,3 @@
     
     :return $diff
 }
-
- 

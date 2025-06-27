@@ -149,4 +149,3 @@
     :set TgPollError $errorMessage
     :log error ("TG-Poller: Опрос завершен с ошибкой: " . $errorMessage)
 }
- 

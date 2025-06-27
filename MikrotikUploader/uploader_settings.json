@@ -1,0 +1,47 @@
+{
+  "routers": [
+    {
+      "name": "Тест-22",
+      "ip": "10.10.22.1",
+      "username": "FokinSA",
+      "password": "gjhfvtyznm",
+      "port": 8728
+    },
+    {
+      "name": "Тест-55",
+      "ip": "10.10.55.1",
+      "username": "FokinSA",
+      "password": "gjhfvtyznm",
+      "port": 8728
+    },
+    {
+      "name": "Тест-44",
+      "ip": "10.10.44.1",
+      "username": "FokinSA",
+      "password": "gjhfvtyznm",
+      "port": 8728
+    }
+  ],
+  "source_directory": "/Users/fokinsa/Projects/NasosRunner/CodeNasos",
+  "selected_router_index": 0,
+  "column_widths": {
+    "scripts": {
+      "name": 469,
+      "size": 217
+    },
+    "schedulers": {
+      "name": 340,
+      "status": 208,
+      "next_run": 239
+    },
+    "files": {
+      "selected": 164,
+      "name": 336,
+      "size": 202,
+      "modified": 249
+    }
+  },
+  "window_geometry": "1635x825+441+177",
+  "max_log_lines": 1000,
+  "log_mode": "full"
+}
