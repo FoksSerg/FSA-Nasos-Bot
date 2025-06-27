@@ -193,90 +193,51 @@ pip install -r requirements_gui.txt
 
 ## 🏗️ Архитектура
 
-### 🎛️ Революционная архитектура с критической защитой
+### 🎛️ Архитектура системы
+
+#### 1️⃣ Общая структура компонентов
 
 ```mermaid
 graph TB
-    subgraph "🛡️ Система безопасности"
-        S1[🚨 Критическая проверка каждые 4с]
-        S1 --> S2{Насос без автостопа?}
-        S2 -->|❌ Да| S3[⚡ НЕМЕДЛЕННОЕ ОТКЛЮЧЕНИЕ]
-        S3 --> S4[📱 Аварийное уведомление]
-        S2 -->|✅ Нет| S5[✅ Продолжить работу]
-    end
-    
-    subgraph "🎯 Центральный диспетчер"
-        A[📱 Nasos-Telegram] --> B[🎛️ Nasos-TG-Activator]
-        B --> C[⏰ Scheduler Creation]
-        C --> D[🧹 Auto Cleanup]
-    end
-    
-    subgraph "📤 Исполнительные модули"
-        E[📨 Nasos-TG-SendMessage]
-        F[⌨️ Nasos-TG-SendKeyboard]
-        G[📱 Nasos-TG-SendReplyKeyboard]
-        H[🔧 Nasos-TG-MenuSet]
-        I[🧹 Nasos-TG-MenuClear]
-        J[🔍 Nasos-TG-Poller]
-    end
-    
-    subgraph "🔧 Основные модули"
-        K[🚀 Nasos-Startup]
-        L[📋 Nasos-Init]
-        M[💬 Nasos-Messages]
-        N[🔄 Nasos-Runner]
-        O[⏰ Nasos-TimeUtils]
-        P[🐕 Nasos-WatchDog]
-    end
-    
-    subgraph "🧪 Тестовый режим"
-        TEST1[🧪 TestPoeStatus Variable]
-        TEST2[⚡ testPoeControl Function]
-        TEST3{PoeMainInterface = "TEST"?}
-        TEST3 -->|✅ Да| TEST1
-        TEST3 -->|❌ Нет| Q
-    end
-    
-    A --> S1
-    B --> E
-    B --> F
-    B --> G
-    B --> H
-    B --> I
-    B --> J
-    
-    A --> N
-    K --> L
-    L --> M
-    L --> TEST1
-    N --> TEST3
-    N --> Q[⚡ POE Interface E5-Nasos]
-    Q --> R[🚰 Реальный насос]
-    TEST1 --> TEST4[🖥️ Эмулированный насос]
-    TEST2 --> TEST1
-    
-    N --> T[📡 Telegram API]
-    E --> T
-    F --> T
-    G --> T
-    H --> T
-    I --> T
-    J --> T
-    
-    P --> U{💓 Heartbeat?}
-    U -->|❌ Нет| V[🔄 Restart Telegram]
-    U -->|✅ Да| W[⏳ Wait 5min]
-    W --> P
-    
-    subgraph "🛠️ Utilities & GUI"
-        X[🔗 UrlEncoder]
-        Y[⏰ TimeUtils]
-        Z[🖥️ MikrotikUploader GUI]
-        AUTO[🤖 auto_compact.py]
-    end
-    
-    Z --> L
-    AUTO --> CodeNasos[🗜️ CodeNasos/]
+    A[📱 Пользователь Telegram] --> B[📱 Nasos-Telegram]
+    B --> C[🎛️ Центральный диспетчер]
+    C --> D[📤 Исполнительные модули]
+    C --> E[🔄 Nasos-Runner]
+    E --> F[⚡ POE Интерфейс]
+    F --> G[🚰 Насос]
+```
+
+#### 2️⃣ Система безопасности
+
+```mermaid
+graph TB
+    A[🚨 Проверка каждые 4с] --> B{Насос без автостопа?}
+    B -->|❌ Да| C[⚡ НЕМЕДЛЕННОЕ ОТКЛЮЧЕНИЕ]
+    B -->|✅ Нет| D[✅ Продолжить работу]
+    C --> E[📱 Аварийное уведомление]
+```
+
+#### 3️⃣ Диспетчер Telegram
+
+```mermaid
+graph TB
+    A[📱 Nasos-Telegram] --> B[🎛️ Nasos-TG-Activator]
+    B --> C[📨 SendMessage]
+    B --> D[⌨️ SendKeyboard]
+    B --> E[📱 SendReplyKeyboard]
+    B --> F[🔧 MenuSet]
+    B --> G[🧹 MenuClear]
+```
+
+#### 4️⃣ Тестовый режим POE
+
+```mermaid
+graph TB
+    A{PoeMainInterface?} 
+    A -->|TEST| B[🧪 TestPoeStatus]
+    A -->|E5-Nasos| C[⚡ Реальный POE]
+    B --> D[🖥️ Эмулированный насос]
+    C --> E[🚰 Реальный насос]
 ```
 
 ### 🎛️ Принцип работы диспетчера:
@@ -301,9 +262,25 @@ NasosRunner/
 │   ├── BestPractice-Telegram-SafeFetch.md # Лучшие практики API
 │   ├── History-Telegram-Integration.md   # История интеграции Telegram
 │   └── History-TimeUtils-Integration.md  # История интеграции TimeUtils
+├── 🛠️ RazrabNasos/                      # Папка разработки (исходники)
+│   ├── 🚀 Nasos-Startup.rsc            # Автозапуск системы
+│   ├── 📋 Nasos-Init.rsc               # Инициализация переменных (исключен из git)
+│   ├── 📋 Nasos-Init.rsc.template      # Шаблон инициализации (без токенов)
+│   ├── 💬 Nasos-Messages.rsc           # Текстовые сообщения
+│   ├── 📱 Nasos-Telegram.rsc           # Обработка команд Telegram
+│   ├── 🔄 Nasos-Runner.rsc             # Основной движок управления
+│   ├── ⏰ Nasos-TimeUtils.rsc          # Форматирование времени
+│   ├── 🐕 Nasos-WatchDog.rsc           # Мониторинг системы
+│   ├── 🎛️ Nasos-TG-Activator.rsc      # Центральный диспетчер
+│   ├── 📨 Nasos-TG-SendMessage.rsc     # Отправка простых сообщений
+│   ├── ⌨️ Nasos-TG-SendKeyboard.rsc    # Inline клавиатуры
+│   ├── 📱 Nasos-TG-SendReplyKeyboard.rsc # Reply клавиатуры
+│   ├── 🔧 Nasos-TG-MenuSet.rsc         # Установка меню бота
+│   ├── 🧹 Nasos-TG-MenuClear.rsc       # Очистка меню бота
+│   └── 🔍 Nasos-TG-Poller.rsc          # Безопасный опрос Telegram API
 ├── 🗜️ CodeNasos/                        # Компактные модули для загрузки в Winbox
-├── 💾 Rezerv/                           # Резервные копии
 ├── 🧪 Test/                             # Тестовые модули
+├── 💾 Rezerv/                           # Резервные копии
 ├── 🔗 UrlEncoder/                       # Утилита кодирования URL
 │   ├── UrlEncoder.py                    # GUI приложение Python
 │   └── requirements.txt                 # Зависимости Python
@@ -314,23 +291,8 @@ NasosRunner/
 │   ├── requirements_gui.txt            # Зависимости GUI
 │   ├── README.md                       # Документация загрузчика
 │   └── README_GUI.md                   # Документация GUI
-├── 🚀 upload_to_mikrotik.py            # Python обертка для запуска
-├── 🚀 Nasos-Startup.rsc                # Автозапуск системы
-├── 📋 Nasos-Init.rsc                   # Инициализация переменных
-├── 💬 Nasos-Messages.rsc               # Текстовые сообщения
-├── 📱 Nasos-Telegram.rsc               # Обработка команд Telegram
-├── 🔄 Nasos-Runner.rsc                 # Основной движок управления
-├── ⏰ Nasos-TimeUtils.rsc              # Форматирование времени
-├── 🐕 Nasos-WatchDog.rsc               # Мониторинг системы
-├── 🎛️ Nasos-TG-Activator.rsc          # Центральный диспетчер
-├── 📨 Nasos-TG-SendMessage.rsc         # Отправка простых сообщений
-├── ⌨️ Nasos-TG-SendKeyboard.rsc        # Inline клавиатуры
-├── 📱 Nasos-TG-SendReplyKeyboard.rsc   # Reply клавиатуры
-├── 🔧 Nasos-TG-MenuSet.rsc             # Установка меню бота
-├── 🧹 Nasos-TG-MenuClear.rsc           # Очистка меню бота
-├── 🔍 Nasos-TG-Poller.rsc              # Безопасный опрос Telegram API
-├── 📋 Nasos-Init.rsc.template          # Шаблон инициализации
 ├── 🤖 auto_compact.py                   # Автоматический создатель компактных модулей
+├── 📋 mikrotik-syntax-rules.md         # Правила синтаксиса RouterOS
 └── 📖 README.md                        # Основная документация
 ```
 
