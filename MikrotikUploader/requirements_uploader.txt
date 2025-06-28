@@ -1,4 +1,0 @@
-paramiko>=2.7.2
-pathlib2>=2.3.6; python_version < '3.4' 
-requests>=2.31.0
-urllib3>=2.1.0 
