@@ -1106,6 +1106,12 @@ class MikrotikUploaderGUI:
         self.max_log_lines = 1000  # Максимальное количество строк в логе
         self.log_mode = "full"  # "full" или "compact"
         
+        # Настройки автообновления
+        self.auto_refresh_enabled = False
+        self.auto_refresh_interval = 3  # Интервал в секундах (по умолчанию 3 сек)
+        self.auto_refresh_timer = None
+        self.last_refresh_time = None
+        
         # Загружаем сохраненные настройки
         self.load_settings()
         
@@ -1123,16 +1129,19 @@ class MikrotikUploaderGUI:
     
     def create_interface(self):
         """Создание основного интерфейса приложения."""
-        # Создаем notebook для вкладок (убираем верхний фрейм)
+        # Создаем общий фрейм статуса внизу СНАЧАЛА (нужен для active_router_label)
+        self.create_status_frame()
+        
+        # Создаем notebook для вкладок
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 10))
         
         # Создаем вкладки
         self.create_routers_tab()
         self.create_files_tab()
         self.create_content_tab()
         self.create_upload_tab()
-        
+    
     def create_routers_tab(self):
         """Вкладка управления роутерами."""
         routers_frame = ttk.Frame(self.notebook, padding="10")
@@ -1181,13 +1190,7 @@ class MikrotikUploaderGUI:
         ttk.Button(buttons_frame, text="🔗 Тест связи", command=self.test_connection).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(buttons_frame, text="✅ Выбрать", command=self.select_router_from_list).pack(side=tk.LEFT)
         
-        # Статус активного роутера
-        status_frame = ttk.LabelFrame(routers_frame, text="Активный роутер", padding="5")
-        status_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
-        
-        self.active_router_label = ttk.Label(status_frame, text="Роутер не выбран", 
-                                           font=('Arial', 12, 'bold'), foreground='blue')
-        self.active_router_label.pack()
+        # Статус активного роутера - УБИРАЕМ, перенесен в общий фрейм статуса
         
         # Настройка растягивания для вкладки роутеров
         routers_frame.columnconfigure(0, weight=1)
@@ -1195,6 +1198,245 @@ class MikrotikUploaderGUI:
         
         # Обновляем список роутеров
         self.refresh_routers_list()
+    
+    def create_status_frame(self):
+        """Создание общего фрейма статуса внизу формы (отображается на всех вкладках)."""
+        status_main_frame = ttk.LabelFrame(self.root, text="Статус и автообновление", padding="5")
+        status_main_frame.pack(fill=tk.X, padx=10, pady=(10, 5), side=tk.BOTTOM)
+        
+        # Левая часть - информация о роутере
+        router_info_frame = ttk.Frame(status_main_frame)
+        router_info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        ttk.Label(router_info_frame, text="Активный роутер:", font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=(0, 5))
+        self.active_router_label = ttk.Label(router_info_frame, text="Роутер не выбран", 
+                                           font=('Arial', 10), foreground='red')
+        self.active_router_label.pack(side=tk.LEFT, padx=(0, 20))
+        
+        # Центральная часть - настройки автообновления
+        auto_refresh_frame = ttk.Frame(status_main_frame)
+        auto_refresh_frame.pack(side=tk.LEFT, padx=(10, 10))
+        
+        # Чекбокс автообновления
+        self.auto_refresh_var = tk.BooleanVar(value=self.auto_refresh_enabled)
+        auto_refresh_checkbox = ttk.Checkbutton(auto_refresh_frame, text="Автообновление", 
+                                               variable=self.auto_refresh_var, 
+                                               command=self.toggle_auto_refresh)
+        auto_refresh_checkbox.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Выбор интервала
+        ttk.Label(auto_refresh_frame, text="Интервал:").pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.interval_var = tk.StringVar(value=str(self.auto_refresh_interval))
+        interval_combo = ttk.Combobox(auto_refresh_frame, textvariable=self.interval_var, 
+                                     values=["1", "3", "10"], width=5, state="readonly")
+        interval_combo.pack(side=tk.LEFT, padx=(0, 5))
+        interval_combo.bind("<<ComboboxSelected>>", self.on_interval_change)
+        
+        ttk.Label(auto_refresh_frame, text="сек").pack(side=tk.LEFT, padx=(0, 15))
+        
+        # Кнопка ручного обновления
+        ttk.Button(auto_refresh_frame, text="🔄 Обновить сейчас", 
+                  command=self.manual_refresh).pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Правая часть - статус последнего обновления
+        refresh_status_frame = ttk.Frame(status_main_frame)
+        refresh_status_frame.pack(side=tk.RIGHT)
+        
+        ttk.Label(refresh_status_frame, text="Последнее обновление:", font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 5))
+        self.last_refresh_label = ttk.Label(refresh_status_frame, text="никогда", 
+                                           font=('Arial', 9), foreground='gray')
+        self.last_refresh_label.pack(side=tk.LEFT)
+    
+    def toggle_auto_refresh(self):
+        """Включение/выключение автообновления."""
+        self.auto_refresh_enabled = self.auto_refresh_var.get()
+        
+        if self.auto_refresh_enabled:
+            if self.selected_router:
+                self.log_message(f"🔄 Автообновление включено (интервал: {self.auto_refresh_interval} сек)", "INFO")
+                self.start_auto_refresh()
+            else:
+                self.log_message("⚠️ Выберите роутер для включения автообновления", "WARNING")
+                self.auto_refresh_var.set(False)
+                self.auto_refresh_enabled = False
+        else:
+            self.log_message("⏹️ Автообновление отключено", "INFO")
+            self.stop_auto_refresh()
+        
+        self.save_settings()
+    
+    def on_interval_change(self, event=None):
+        """Изменение интервала автообновления."""
+        try:
+            new_interval = int(self.interval_var.get())
+            if new_interval != self.auto_refresh_interval:
+                self.auto_refresh_interval = new_interval
+                self.log_message(f"⏱️ Интервал автообновления изменен на {new_interval} сек", "INFO")
+                
+                # Перезапускаем таймер с новым интервалом если автообновление включено
+                if self.auto_refresh_enabled:
+                    self.stop_auto_refresh()
+                    self.start_auto_refresh()
+                
+                self.save_settings()
+        except ValueError:
+            self.log_message("❌ Некорректный интервал автообновления", "ERROR")
+    
+    def start_auto_refresh(self):
+        """Запуск таймера автообновления."""
+        if not self.selected_router:
+            return
+            
+        self.stop_auto_refresh()  # Останавливаем предыдущий таймер если есть
+        
+        def auto_refresh_worker():
+            if self.auto_refresh_enabled and self.selected_router:
+                # Запускаем обновление в отдельном потоке чтобы не блокировать UI
+                threading.Thread(target=self.auto_load_router_content_silent, daemon=True).start()
+                
+                # Планируем следующее обновление
+                if self.auto_refresh_enabled:  # Проверяем еще раз на случай если отключили во время выполнения
+                    self.auto_refresh_timer = self.root.after(self.auto_refresh_interval * 1000, auto_refresh_worker)
+        
+        # Запускаем первое обновление сразу
+        auto_refresh_worker()
+    
+    def stop_auto_refresh(self):
+        """Остановка таймера автообновления."""
+        if self.auto_refresh_timer:
+            self.root.after_cancel(self.auto_refresh_timer)
+            self.auto_refresh_timer = None
+    
+    def manual_refresh(self):
+        """Ручное обновление данных с роутера."""
+        if not self.selected_router:
+            messagebox.showwarning("Предупреждение", "Сначала выберите роутер")
+            return
+        
+        self.log_message("🔄 Ручное обновление данных роутера", "INFO")
+        threading.Thread(target=self.auto_load_router_content, daemon=True).start()
+    
+    def auto_load_router_content_silent(self):
+        """Автоматическая загрузка содержимого роутера без подробного логирования."""
+        if not self.selected_router:
+            return
+        
+        try:
+            uploader = MikrotikUploader()
+            uploader.router_ip = self.selected_router.ip
+            uploader.username = self.selected_router.username
+            uploader.password = self.selected_router.password
+            uploader.port = self.selected_router.port
+            
+            # Подключаемся с коротким таймаутом для автообновления
+            uploader.connect()
+            uploader.sock.settimeout(2.0)  # Короткий таймаут для автообновления
+            
+            if not uploader.login():
+                raise Exception("Ошибка авторизации")
+            
+            # Получаем скрипты БЕЗ source поля
+            uploader.write_sentence(['/system/script/print', '=.proplist=.id,name,owner,run-count'])
+            scripts = []
+            
+            while True:
+                try:
+                    reply = uploader.read_sentence()
+                    if not reply or reply[0] == '!done':
+                        break
+                    elif reply[0] == '!re':
+                        script_info = {'name': '', 'owner': '', 'run-count': '0'}
+                        for item in reply[1:]:
+                            if item.startswith('=name='):
+                                script_info['name'] = item[6:]
+                            elif item.startswith('=owner='):
+                                script_info['owner'] = item[7:]
+                            elif item.startswith('=run-count='):
+                                script_info['run-count'] = item[12:]
+                        
+                        if script_info['name']:
+                            scripts.append(script_info)
+                    elif reply[0] == '!trap':
+                        break
+                except:
+                    break
+            
+            # Получаем шедулеры
+            uploader.write_sentence(['/system/scheduler/print'])
+            schedulers = []
+            
+            while True:
+                try:
+                    reply = uploader.read_sentence()
+                    if not reply or reply[0] == '!done':
+                        break
+                    elif reply[0] == '!re':
+                        scheduler_info = {'name': '', 'disabled': 'true', 'next-run': ''}
+                        for item in reply[1:]:
+                            if item.startswith('=name='):
+                                scheduler_info['name'] = item[6:]
+                            elif item.startswith('=disabled='):
+                                scheduler_info['disabled'] = item[10:]
+                            elif item.startswith('=next-run='):
+                                scheduler_info['next-run'] = item[11:]
+                        
+                        if scheduler_info['name']:
+                            schedulers.append(scheduler_info)
+                    elif reply[0] == '!trap':
+                        break
+                except:
+                    break
+            
+            uploader.sock.close()
+            
+            # Обновляем время последнего обновления
+            self.last_refresh_time = datetime.now()
+            
+            def update_ui():
+                # Обновляем UI
+                if hasattr(self, 'router_scripts_tree'):
+                    self.router_scripts_tree.delete(*self.router_scripts_tree.get_children())
+                    for script in scripts:
+                        run_count = script.get('run-count', '0')
+                        self.router_scripts_tree.insert('', 'end', values=(script['name'], run_count))
+                
+                if hasattr(self, 'router_schedulers_tree'):
+                    self.router_schedulers_tree.delete(*self.router_schedulers_tree.get_children())
+                    for scheduler in schedulers:
+                        status = "✓" if scheduler.get('disabled') == 'false' else "✗"
+                        next_run = scheduler.get('next-run', 'никогда')
+                        self.router_schedulers_tree.insert('', 'end', values=(scheduler['name'], status, next_run))
+                
+                if hasattr(self, 'remote_scripts_tree'):
+                    self.remote_scripts_tree.delete(*self.remote_scripts_tree.get_children())
+                    for script in scripts:
+                        run_count = script.get('run-count', '0')
+                        self.remote_scripts_tree.insert('', 'end', values=(script['name'], run_count))
+                    
+                    self.remote_status_var.set(f"Скриптов: {len(scripts)}, Шедулеров: {len(schedulers)}")
+                
+                if hasattr(self, 'content_status_var'):
+                    self.content_status_var.set(f"Скриптов: {len(scripts)}, Шедулеров: {len(schedulers)}")
+                
+                # Обновляем время последнего обновления
+                if hasattr(self, 'last_refresh_label'):
+                    time_str = self.last_refresh_time.strftime("%H:%M:%S")
+                    self.last_refresh_label.config(text=time_str, foreground='green')
+            
+            self.root.after(0, update_ui)
+            
+        except Exception as e:
+            # При ошибке автообновления просто обновляем статус без детального логирования
+            def update_error_status():
+                if hasattr(self, 'last_refresh_label'):
+                    self.last_refresh_label.config(text="ошибка", foreground='red')
+                if hasattr(self, 'remote_status_var'):
+                    self.remote_status_var.set("Ошибка подключения")
+                if hasattr(self, 'content_status_var'):
+                    self.content_status_var.set("Ошибка подключения")
+            
+            self.root.after(0, update_error_status)
     
     def create_files_tab(self):
         """Вкладка выбора файлов для загрузки."""
@@ -1732,6 +1974,10 @@ class MikrotikUploaderGUI:
                 self.max_log_lines = settings.get('max_log_lines', 1000)
                 self.log_mode = settings.get('log_mode', 'full')
                 
+                # Сохраняем настройки автообновления
+                self.auto_refresh_enabled = settings.get('auto_refresh_enabled', False)
+                self.auto_refresh_interval = settings.get('auto_refresh_interval', 3)
+                
                 # Сохраняем геометрию окна
                 self.saved_window_geometry = settings.get('window_geometry', '')
                 
@@ -1782,7 +2028,9 @@ class MikrotikUploaderGUI:
                 'column_widths': column_widths,
                 'window_geometry': window_geometry,
                 'max_log_lines': self.max_log_lines,
-                'log_mode': self.log_mode
+                'log_mode': self.log_mode,
+                'auto_refresh_enabled': self.auto_refresh_enabled,
+                'auto_refresh_interval': self.auto_refresh_interval
             }
             
             with open(settings_file, 'w', encoding='utf-8') as f:
@@ -1961,6 +2209,14 @@ class MikrotikUploaderGUI:
             
             # Автоматически обновляем содержимое роутера
             self.auto_load_router_content()
+            
+            # Запускаем автообновление если оно было включено
+            if self.auto_refresh_enabled:
+                self.start_auto_refresh()
+            
+            # Запускаем автообновление если оно было включено
+            if self.auto_refresh_enabled:
+                self.start_auto_refresh()
     
     def update_router_status(self):
         """Обновление статуса активного роутера."""
@@ -2593,6 +2849,9 @@ class MikrotikUploaderGUI:
 
     def on_closing(self):
         """Обработчик закрытия приложения."""
+        # Останавливаем автообновление
+        self.stop_auto_refresh()
+        
         # Останавливаем загрузку если она идет
         if self.upload_thread and self.upload_thread.is_alive():
             self.upload_stop_flag.set()
