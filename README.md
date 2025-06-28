@@ -265,7 +265,7 @@ graph TB
 
 ```mermaid
 graph TB
-    A[📱 Nasos-Telegram] --> B[🎛️ Nasos-TG-Activator]
+        A[📱 Nasos-Telegram] --> B[🎛️ Nasos-TG-Activator]
     B --> C[📨 SendMessage]
     B --> D[⌨️ SendKeyboard]
     B --> E[📱 SendReplyKeyboard]
