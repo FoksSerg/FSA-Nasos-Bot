@@ -1,0 +1,184 @@
+# Система мониторинга уровня Boler - Шаблон инициализации
+# Название: Boler-Init.rsc.template
+# Версия: 1.0
+# Дата: 28 июня 2025
+# Автор: Фокин Сергей Александрович
+# Описание: Шаблон конфигурации для разных установок системы Boler
+# 
+# ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ:
+# 1. Скопируйте этот файл в Boler-Init.rsc
+# 2. Замените все параметры в {{}} на актуальные значения
+# 3. Загрузите на роутер Boler
+# 4. Запустите для инициализации системы
+
+:log info "BOLER-INIT: Запуск инициализации системы мониторинга уровня"
+
+# КОНСТАНТЫ СИСТЕМЫ
+
+:global BolerVersion "1.0"
+:global BolerSystemName "Boler Level Monitor"
+:global BolerInitTime [/system clock get time]
+:global BolerInitDate [/system clock get date]
+
+:log info "BOLER-INIT: $BolerSystemName v$BolerVersion"
+
+# ЗАГРУЗКА МОДУЛЯ СООБЩЕНИЙ
+:log info "BOLER-INIT: Загрузка модуля сообщений"
+/system script run Boler-Messages
+
+# КОНФИГУРАЦИОННЫЕ ПАРАМЕТРЫ - ЗАМЕНИТЕ НА АКТУАЛЬНЫЕ ЗНАЧЕНИЯ
+
+# Сетевые настройки для связи с роутером Nasos
+:global BolerNasosIP "{{NASOS_IP_ADDRESS}}"
+:global BolerNasosUser "{{NASOS_USERNAME}}"
+:global BolerNasosPassword "{{NASOS_PASSWORD}}"
+:global BolerNasosPort "{{NASOS_API_PORT}}"
+
+:log info "BOLER-INIT: IP роутера Nasos: $BolerNasosIP"
+
+# Аппаратные настройки портов
+:global BolerSensorPort "{{SENSOR_PORT}}"
+:global BolerLEDPort "{{LED_PORT}}"
+
+:log info "BOLER-INIT: Порт датчиков: $BolerSensorPort"
+:log info "BOLER-INIT: Порт LED: $BolerLEDPort"
+
+# Интервалы опроса (в секундах)
+:global BolerSensorInterval {{SENSOR_INTERVAL}}
+:global BolerNetworkInterval {{NETWORK_INTERVAL}}
+:global BolerDisplayInterval {{DISPLAY_INTERVAL}}
+
+:log info "BOLER-INIT: Интервал опроса датчиков: $BolerSensorInterval сек"
+
+# 
+# ПЕРЕМЕННЫЕ СОСТОЯНИЯ ДАТЧИКОВ
+# 
+
+# Состояние рабочего уровня
+:global BolerWorkLevelStatus false
+:log info "BOLER-INIT: Инициализировано состояние рабочего уровня: НЕ достигнут"
+
+# Состояние критического/аварийного уровня
+:global BolerCriticalLevelStatus false
+:log info "BOLER-INIT: Инициализировано состояние критического уровня: НЕ достигнут"
+
+# Флаг достоверности данных датчиков
+:global BolerSensorReliable false
+:log info "BOLER-INIT: Инициализирован флаг достоверности датчиков: НЕ достоверно"
+
+# Время последнего обновления датчиков
+:global BolerLastSensorUpdate "никогда"
+:log info "BOLER-INIT: Инициализировано время последнего обновления датчиков"
+
+# 
+# ПЕРЕМЕННЫЕ СЕТЕВОГО ВЗАИМОДЕЙСТВИЯ
+# 
+
+# Статус связи с роутером Nasos
+:global BolerNasosConnection false
+:log info "BOLER-INIT: Инициализирован статус связи с Nasos: НЕТ связи"
+
+# Состояние насоса (получаемое от Nasos)
+:global BolerNasosStatus "unknown"
+:log info "BOLER-INIT: Инициализировано состояние насоса: НЕИЗВЕСТНО"
+
+# Время последнего обновления от Nasos
+:global BolerLastNasosUpdate "никогда"
+:log info "BOLER-INIT: Инициализировано время последнего обновления от Nasos"
+
+# 
+# ПЕРЕМЕННЫЕ ИНДИКАЦИИ
+# 
+
+# Текущий режим индикации LED
+:global BolerLEDMode "init"
+:log info "BOLER-INIT: Инициализирован режим LED: ИНИЦИАЛИЗАЦИЯ"
+
+# Состояние LED (on/off)
+:global BolerLEDState "off"
+:log info "BOLER-INIT: Инициализировано состояние LED: ВЫКЛЮЧЕН"
+
+# 
+# ПЕРЕМЕННЫЕ СТАТИСТИКИ И ДИАГНОСТИКИ
+# 
+
+# Счетчик циклов работы
+:global BolerRunCounter 0
+:log info "BOLER-INIT: Инициализирован счетчик циклов работы: 0"
+
+# Счетчик ошибок датчиков
+:global BolerSensorErrors 0
+:log info "BOLER-INIT: Инициализирован счетчик ошибок датчиков: 0"
+
+# Счетчик ошибок сети
+:global BolerNetworkErrors 0
+:log info "BOLER-INIT: Инициализирован счетчик ошибок сети: 0"
+
+# 
+# КОНФИГУРАЦИЯ ПОРТОВ
+# 
+
+# Настройка порта датчиков
+:do {
+    /interface ethernet set $BolerSensorPort auto-negotiation=yes
+    :log info "BOLER-INIT: Настроен порт датчиков $BolerSensorPort"
+} on-error={
+    :log error "BOLER-INIT: ОШИБКА настройки порта датчиков $BolerSensorPort"
+}
+
+# Настройка POE для LED (если порт поддерживает)
+:do {
+    /interface ethernet poe set $BolerLEDPort poe-out=off
+    :log info "BOLER-INIT: POE на порту LED $BolerLEDPort выключен (начальное состояние)"
+} on-error={
+    :log warning "BOLER-INIT: Порт $BolerLEDPort не поддерживает POE или ошибка настройки"
+}
+
+# 
+# ПРОВЕРКА СИСТЕМЫ
+# 
+
+# Проверка наличия необходимых скриптов (будут созданы позже)
+:local requiredScripts {"Boler-LevelSensor";"Boler-NetworkAPI";"Boler-StatusDisplay";"Boler-Runner"}
+:local missingScripts ""
+
+:foreach script in=$requiredScripts do={
+    :if ([:len [/system script find name=$script]] = 0) do={
+        :set missingScripts ($missingScripts . $script . " ")
+    }
+}
+
+:if ([:len $missingScripts] > 0) do={
+    :log warning "BOLER-INIT: Отсутствуют скрипты: $missingScripts"
+    :log warning "BOLER-INIT: Система будет работать в ограниченном режиме"
+} else={
+    :log info "BOLER-INIT: Все необходимые скрипты найдены"
+}
+
+# 
+# ЗАВЕРШЕНИЕ ИНИЦИАЛИЗАЦИИ
+# 
+
+# Устанавливаем флаг успешной инициализации
+:set BolerLEDMode "ready"
+
+:log info "BOLER-INIT: Инициализация завершена успешно"
+:log info "BOLER-INIT: Система готова к работе"
+:log info "BOLER-INIT: Время завершения: $BolerInitTime $BolerInitDate"
+
+# Дополнительная информация о конфигурации
+:log info "BOLER-INIT: Конфигурация системы:"
+:log info "BOLER-INIT: - Nasos IP: $BolerNasosIP:$BolerNasosPort"
+:log info "BOLER-INIT: - Порт датчиков: $BolerSensorPort"
+:log info "BOLER-INIT: - Интервалы: датчики=$BolerSensorInterval сек, сеть=$BolerNetworkInterval сек"
+
+# ПАРАМЕТРЫ ДЛЯ ЗАМЕНЫ В ШАБЛОНЕ:
+# {{NASOS_IP_ADDRESS}}   - IP адрес роутера Nasos (например: 192.168.1.100)
+# {{NASOS_USERNAME}}     - имя пользователя для подключения к Nasos (например: admin)
+# {{NASOS_PASSWORD}}     - пароль для подключения к Nasos
+# {{NASOS_API_PORT}}     - порт RouterOS API (обычно 8728 или 8729 для SSL)
+# {{SENSOR_PORT}}        - порт для подключения датчиков (например: ether2)
+# {{LED_PORT}}           - порт для LED индикации (например: ether2)
+# {{SENSOR_INTERVAL}}    - интервал опроса датчиков в секундах (например: 5)
+# {{NETWORK_INTERVAL}}   - интервал опроса Nasos в секундах (например: 10)
+# {{DISPLAY_INTERVAL}}   - интервал обновления LED в секундах (например: 2) 

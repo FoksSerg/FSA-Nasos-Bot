@@ -11,7 +11,7 @@ MikrotikUploader GUI - Графический интерфейс для загр
 - Сохранение настроек между сессиями
 
 Автор: NasosRunner Project
-Версия: 2.1.3
+Версия: 1.0
 """
 
 import tkinter as tk
@@ -134,9 +134,9 @@ class MikrotikUploader:
         - Затем отправляются сами данные
         
         Обработка кодировки:
-        - Используется Windows-1251 для поддержки русских символов в RouterOS
-        - При ошибке кодирования используется UTF-8 как fallback
-        - RouterOS API поддерживает кодировку Windows-1251 (CP1251)
+        - Удаляются все не-ASCII символы для совместимости с RouterOS
+        - Используется ASCII кодировка с игнорированием ошибок
+        - RouterOS API работает только с ASCII символами
         
         Args:
             word (str|bytes): Слово для отправки. Может быть строкой или байтами.
@@ -149,13 +149,13 @@ class MikrotikUploader:
             # Если данные уже в байтах - используем как есть
             data = word
         else:
-            # Кодируем строку в Windows-1251 для поддержки русских символов в RouterOS
-            # RouterOS поддерживает кодировку Windows-1251 (CP1251)
-            try:
-                data = word.encode("windows-1251", errors="replace")
-            except UnicodeEncodeError:
-                # Если не удается закодировать в Windows-1251, используем UTF-8 как fallback
-                data = word.encode("utf-8", errors="replace")
+            # Очищаем строку от не-ASCII символов для совместимости с RouterOS
+            # RouterOS API не поддерживает Unicode символы
+            word = re.sub(r'[^\x00-\x7F]+', '', word)
+            
+            # Кодируем строку в ASCII с игнорированием ошибок
+            # errors="ignore" пропускает символы, которые нельзя закодировать
+            data = word.encode("ascii", errors="ignore")
                 
         length = len(data)
         
@@ -211,9 +211,8 @@ class MikrotikUploader:
         4. Читаем указанное количество байт данных
         
         Обработка кодировок:
-        - Сначала пробуем Windows-1251 (основная кодировка RouterOS для русских символов)
+        - Сначала пробуем декодировать как ASCII (основная кодировка API)
         - При ошибке переходим на UTF-8 с заменой некорректных символов
-        - В крайнем случае используем ASCII с заменой символов
         - Это обеспечивает совместимость с различными версиями RouterOS
         
         Returns:
@@ -245,15 +244,12 @@ class MikrotikUploader:
         
         # Пробуем различные кодировки для декодирования байтов в строку
         try:
-            # Сначала пробуем Windows-1251 (основная кодировка RouterOS для русских символов)
-            return ret.decode("windows-1251", errors="replace")
+            # Сначала пробуем ASCII (основная кодировка API Mikrotik)
+            return ret.decode("ascii", errors="ignore")
         except UnicodeDecodeError:
-            try:
-                # Затем пробуем UTF-8
-                return ret.decode("utf-8", errors="replace")
-            except UnicodeDecodeError:
-                # В крайнем случае используем ASCII с заменой символов
-                return ret.decode("ascii", errors="replace")
+            # При ошибке используем UTF-8 с заменой некорректных символов
+            # errors='replace' заменяет проблемные символы на '?'
+            return ret.decode('utf-8', errors='replace')
         
     def read_sentence(self):
         """
@@ -1088,7 +1084,7 @@ class MikrotikUploaderGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("MikrotikUploader GUI v2.1.3")
+        self.root.title("MikrotikUploader GUI v2.1.2")
         self.root.geometry("1200x800")
         self.root.minsize(1000, 600)
         

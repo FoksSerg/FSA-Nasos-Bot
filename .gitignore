@@ -61,6 +61,8 @@ Thumbs.db
 config.local.*
 RazrabNasos/Nasos-Init.rsc
 CodeNasos/Nasos-Init.rsc
+RazrabBoler/Boler-Init.rsc
+CodeBoler/Boler-Init.rsc
 
 # Тестовые файлы RouterOS (только конкретные паттерны)
 Test-*.rsc
