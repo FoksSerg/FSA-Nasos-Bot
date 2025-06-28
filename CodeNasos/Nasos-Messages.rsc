@@ -76,6 +76,9 @@
 :global InputSeconds;\r\
 :global FormattedTelegram;\r\
 :global LastWorkDuration;\r\
+:global TgAction;\r\
+:global TgMessage;\r\
+:global TgCleanupTime;\r\
 :local telegramWorkMsg \"\";\r\
 :if ([:len \$PoeStartTime] > 0) do {\r\
 :local currentTime [/system clock get time];\r\
@@ -99,7 +102,10 @@
 /interface ethernet set [find name=\$PoeMainInterface] poe-out=off;\r\
 :set LastStopTime [/system clock get time];\r\
 :local telegramMsg (\$MsgStatusCurrent . \$MsgNewLine . \$MsgPumpAutoStop . \$telegramWorkMsg);\r\
-/tool fetch url=(\"https://api.telegram.org/bot\" . \$BotToken . \"/sendMessage\") http-method=post http-data=(\"chat_id=\" . \$ChatId . \"&text=\" . \$telegramMsg) keep-result=no;\r\
+:set TgAction \"send\";\r\
+:set TgMessage \$telegramMsg;\r\
+:set TgCleanupTime \"30\";\r\
+/system script run Nasos-TG-Activator;\r\
 /system scheduler remove [find name=\$PoeTimerName];\r\
 :set PoeActiveTimer \"\";\r\
 :set PoeStartTime \"\";\r\

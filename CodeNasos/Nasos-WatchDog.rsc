@@ -6,6 +6,10 @@
 :global MsgSysWatchdogTimeout;
 :global MsgSysWatchdogMin;
 :global MsgSysWatchdogRestart;
+:global MsgTimeMin;
+:global TgAction;
+:global TgMessage;
+:global TgCleanupTime;
 :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
 :log warning "Насос - Запуск Nasos-Init";
 /system script run Nasos-Init;
@@ -29,7 +33,11 @@
 :if ($diffMinutes > $timeoutMinutes) do={
 :log error ("Насос - Telegram парсер не отвечает " . $diffMinutes . " минут - перезапуск");
 :local alertMsg ($MsgSysWatchdogTimeout . $diffMinutes . $MsgTimeMin);
-/tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $alertMsg) keep-result=no;
+:set TgAction "send";
+:set TgMessage $alertMsg;
+:set TgCleanupTime "30";
+/system script run Nasos-TG-Activator;
+:log info "Насос - Отправлено уведомление о таймауте через TG-Activator";
 :if ([:len [/system script job find script="Nasos-Telegram"]] > 0) do={
 /system script job remove [find script="Nasos-Telegram"];
 :log warning "Насос - Завершен существующий процесс Nasos-Telegram";
@@ -40,6 +48,10 @@
 }
 } else={
 :log warning "Насос - Heartbeat не найден - запуск Nasos-Telegram";
-/tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $MsgSysWatchdogRestart) keep-result=no;
+:set TgAction "send";
+:set TgMessage $MsgSysWatchdogRestart;
+:set TgCleanupTime "30";
+/system script run Nasos-TG-Activator;
+:log info "Насос - Отправлено уведомление о перезапуске через TG-Activator";
 /system script run Nasos-Telegram;
 }

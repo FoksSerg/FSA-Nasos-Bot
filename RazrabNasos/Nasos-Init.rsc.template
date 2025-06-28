@@ -4,7 +4,7 @@
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
 # Дата создания: 15 июня 2025
 # Дата изменения: 24 июня 2025
-# Версия: 1.7 - Синхронизация с основным модулем после исправления ExpectedStopTime
+# Версия: 1.8 - Использование Nasos-TG-Activator для надежной отправки сообщений
 
 # Основные переменные системы
 :global NasosInitStatus false
@@ -21,6 +21,8 @@
 :global PoeActiveTimer; :global PoeStartTime; :global PoeTimerName "Nasos-POE-Timer"; :global NewDuration; :global TelegramHeartbeat; :global LastUpdateId; :global LastStopTime; :global ExpectedStopTime; :global MsgSysPoeDisabled
 # Переменная для эмуляции POE статуса в тестовом режиме
 :global TestPoeStatus "off"
+# Переменные для TG-Activator
+:global TgAction; :global TgMessage; :global TgCleanupTime
 
 # Инициализация модуля сообщений
 :log warning "Насос - Запуск Nasos-Messages"
@@ -35,8 +37,12 @@
     # Принудительное отключение POE
     /interface ethernet poe set $PoeMainInterface poe-out=off
     :log warning "Насос - POE отключен"
-    # Уведомление в Telegram об отключении
-    /tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $MsgSysPoeDisabled) keep-result=no
+    # Уведомление в Telegram об отключении через активатор
+    :set TgAction "send"
+    :set TgMessage $MsgSysPoeDisabled
+    :set TgCleanupTime "30"
+    /system script run Nasos-TG-Activator
+    :log info "Насос - Отправлено уведомление об отключении POE через TG-Activator"
 }
 
 # Очистка таймера при инициализации

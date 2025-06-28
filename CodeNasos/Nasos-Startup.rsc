@@ -1,5 +1,6 @@
 :log info "Насос - Конфигурация автоматического запуска...";
 :global NasosInitStatus; :global BotToken; :global ChatId; :global MsgSysReboot;
+:global TgAction; :global TgMessage; :global TgCleanupTime;
 :log warning "Насос - Запуск Nasos-Messages";
 /system script run Nasos-Messages;
 :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
@@ -21,5 +22,9 @@
 /system scheduler add name="nasos-watchdog-timer" start-time=startup start-date=jan/01/1970 interval=5m on-event=":delay 1m30s; /system script run Nasos-WatchDog";
 :log info "Насос - Создан сторожевой таймер (5 минут интервал)";
 :local startupMsg "NASOS SYSTEM: Router rebooted, services configured";
-/tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $startupMsg) keep-result=no;
+:set TgAction "send";
+:set TgMessage $startupMsg;
+:set TgCleanupTime "30";
+/system script run Nasos-TG-Activator;
+:log info "Насос - Отправлено уведомление о перезагрузке через TG-Activator";
 :log info "Насос - Конфигурация выполнена!";

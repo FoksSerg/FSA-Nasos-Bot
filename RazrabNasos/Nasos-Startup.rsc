@@ -8,6 +8,7 @@
 
 # Объявление глобальных переменных
 :global NasosInitStatus; :global BotToken; :global ChatId; :global MsgSysReboot
+:global TgAction; :global TgMessage; :global TgCleanupTime
 
 # Инициализация модуля сообщений
 :log warning "Насос - Запуск Nasos-Messages"
@@ -43,5 +44,9 @@
 
 # Отправка уведомления о перезагрузке системы
 :local startupMsg "NASOS SYSTEM: Router rebooted, services configured"
-/tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $startupMsg) keep-result=no
+:set TgAction "send"
+:set TgMessage $startupMsg
+:set TgCleanupTime "30"
+/system script run Nasos-TG-Activator
+:log info "Насос - Отправлено уведомление о перезагрузке через TG-Activator"
 :log info "Насос - Конфигурация выполнена!" 

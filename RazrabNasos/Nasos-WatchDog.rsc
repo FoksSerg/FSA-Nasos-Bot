@@ -2,7 +2,7 @@
 # Модуль мониторинга и перезапуска Telegram бота при зависании
 # Автор: Фокин Сергей Александрович foks_serg@mail.ru
 # Дата создания: 15 июня 2025
-# Версия: 1.2
+# Версия: 1.3 - Использование Nasos-TG-Activator для надежной отправки сообщений
 
 # Объявление глобальных переменных
 :global NasosInitStatus
@@ -13,6 +13,10 @@
 :global MsgSysWatchdogTimeout
 :global MsgSysWatchdogMin
 :global MsgSysWatchdogRestart
+:global MsgTimeMin
+:global TgAction
+:global TgMessage
+:global TgCleanupTime
 
 # Проверка инициализации системы
 :if ([:typeof $NasosInitStatus] = "nothing" || !$NasosInitStatus) do={
@@ -49,9 +53,13 @@
     :if ($diffMinutes > $timeoutMinutes) do={
         :log error ("Насос - Telegram парсер не отвечает " . $diffMinutes . " минут - перезапуск")
         
-        # Отправка уведомления о перезапуске
+        # Отправка уведомления о перезапуске через активатор
         :local alertMsg ($MsgSysWatchdogTimeout . $diffMinutes . $MsgTimeMin)
-        /tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $alertMsg) keep-result=no
+        :set TgAction "send"
+        :set TgMessage $alertMsg
+        :set TgCleanupTime "30"
+        /system script run Nasos-TG-Activator
+        :log info "Насос - Отправлено уведомление о таймауте через TG-Activator"
         
         # Завершение существующего процесса Telegram
         :if ([:len [/system script job find script="Nasos-Telegram"]] > 0) do={
@@ -69,6 +77,13 @@
 } else={
     # Heartbeat не найден - первый запуск или сбой
     :log warning "Насос - Heartbeat не найден - запуск Nasos-Telegram"
-    /tool fetch url=("https://api.telegram.org/bot" . $BotToken . "/sendMessage?chat_id=" . $ChatId . "&text=" . $MsgSysWatchdogRestart) keep-result=no
+    
+    # Отправка уведомления о перезапуске через активатор
+    :set TgAction "send"
+    :set TgMessage $MsgSysWatchdogRestart
+    :set TgCleanupTime "30"
+    /system script run Nasos-TG-Activator
+    :log info "Насос - Отправлено уведомление о перезапуске через TG-Activator"
+    
     /system script run Nasos-Telegram
 } 
