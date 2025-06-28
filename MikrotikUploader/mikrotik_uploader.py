@@ -670,8 +670,6 @@ class MikrotikUploader:
             if not self.login():
                 return False
     
-            time.sleep(2)
-            
             # Удаление старого скрипта если есть
             if not self.remove_script(script_name):
                 return False
@@ -721,7 +719,7 @@ class MikrotikUploader:
         finally:
             if sock:
                 sock.close()
-            time.sleep(3)
+            time.sleep(1)  # Сокращенная пауза для стабилизации
 
     def upload_large_script(self, script_name, content):
         """
@@ -835,7 +833,7 @@ class MikrotikUploader:
                     raise Exception(f"Часть {temp_script_name} не найдена после загрузки")
                 
                 print(f"     ✅ {temp_script_name} успешно загружен")
-                time.sleep(2)  # Пауза между частями для стабильности
+                time.sleep(0.5)  # Краткая пауза между частями для стабильности
                 
             # ═══ ЭТАП 4: СОЗДАНИЕ ОБЪЕДИНЯЮЩЕГО СКРИПТА ═══
             print(f"\n🔄 Создание объединяющего скрипта...")
@@ -1050,8 +1048,8 @@ class MikrotikUploader:
             # ═══ ОЧИСТКА РЕСУРСОВ ═══
             if 'sock' in locals():
                 sock.close()
-            # Пауза для стабилизации системы после сложной операции
-            time.sleep(3)
+            # Сокращенная пауза для стабилизации системы после сложной операции
+            time.sleep(1)
 
 class RouterConfig:
     """Конфигурация роутера для подключения."""
@@ -1086,7 +1084,7 @@ class MikrotikUploaderGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("MikrotikUploader GUI v1.0")
+        self.root.title("MikrotikUploader GUI v2.1.1")
         self.root.geometry("1200x800")
         self.root.minsize(1000, 600)
         
