@@ -1084,7 +1084,7 @@ class MikrotikUploaderGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("MikrotikUploader GUI v2.1.1")
+        self.root.title("MikrotikUploader GUI v2.1.2")
         self.root.geometry("1200x800")
         self.root.minsize(1000, 600)
         
@@ -1206,9 +1206,9 @@ class MikrotikUploaderGUI:
         router_info_frame = ttk.Frame(status_main_frame)
         router_info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        ttk.Label(router_info_frame, text="Активный роутер:", font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(router_info_frame, text="Активный роутер:", font=('Arial', 12, 'bold')).pack(side=tk.LEFT, padx=(0, 5))
         self.active_router_label = ttk.Label(router_info_frame, text="Роутер не выбран", 
-                                           font=('Arial', 10), foreground='red')
+                                           font=('Arial', 12), foreground='red')
         self.active_router_label.pack(side=tk.LEFT, padx=(0, 20))
         
         # Центральная часть - настройки автообновления
@@ -1223,7 +1223,7 @@ class MikrotikUploaderGUI:
         auto_refresh_checkbox.pack(side=tk.LEFT, padx=(0, 10))
         
         # Выбор интервала
-        ttk.Label(auto_refresh_frame, text="Интервал:").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(auto_refresh_frame, text="Интервал:", font=('Arial', 11)).pack(side=tk.LEFT, padx=(0, 5))
         
         self.interval_var = tk.StringVar(value=str(self.auto_refresh_interval))
         interval_combo = ttk.Combobox(auto_refresh_frame, textvariable=self.interval_var, 
@@ -1231,7 +1231,7 @@ class MikrotikUploaderGUI:
         interval_combo.pack(side=tk.LEFT, padx=(0, 5))
         interval_combo.bind("<<ComboboxSelected>>", self.on_interval_change)
         
-        ttk.Label(auto_refresh_frame, text="сек").pack(side=tk.LEFT, padx=(0, 15))
+        ttk.Label(auto_refresh_frame, text="сек", font=('Arial', 11)).pack(side=tk.LEFT, padx=(0, 15))
         
         # Кнопка ручного обновления
         ttk.Button(auto_refresh_frame, text="🔄 Обновить сейчас", 
@@ -1241,9 +1241,9 @@ class MikrotikUploaderGUI:
         refresh_status_frame = ttk.Frame(status_main_frame)
         refresh_status_frame.pack(side=tk.RIGHT)
         
-        ttk.Label(refresh_status_frame, text="Последнее обновление:", font=('Arial', 9)).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(refresh_status_frame, text="Последнее обновление:", font=('Arial', 11)).pack(side=tk.LEFT, padx=(0, 5))
         self.last_refresh_label = ttk.Label(refresh_status_frame, text="никогда", 
-                                           font=('Arial', 9), foreground='gray')
+                                           font=('Arial', 11, 'bold'), foreground='gray')
         self.last_refresh_label.pack(side=tk.LEFT)
     
     def toggle_auto_refresh(self):
