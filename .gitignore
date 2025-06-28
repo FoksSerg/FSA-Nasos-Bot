@@ -60,6 +60,7 @@ Thumbs.db
 *secret*
 config.local.*
 RazrabNasos/Nasos-Init.rsc
+CodeNasos/Nasos-Init.rsc
 
 # Тестовые файлы RouterOS (только конкретные паттерны)
 Test-*.rsc

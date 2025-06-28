@@ -87,15 +87,18 @@ def compact_routeros_file(input_file, output_file):
 
 def auto_process_project():
     """Автоматически обрабатывает все .rsc файлы проекта"""
-    # Получаем директорию где лежит сам скрипт (исходные файлы на том же уровне)
+    # Получаем директорию где лежит сам скрипт
     script_dir = Path(__file__).parent
+    
+    # Папка с исходниками для разработки
+    razrab_nasos_dir = script_dir / "RazrabNasos"
     
     # Создаем папку CodeNasos рядом со скриптом
     code_nasos_dir = script_dir / "CodeNasos"
     code_nasos_dir.mkdir(exist_ok=True)
     
-    # Ищем .rsc файлы в директории скрипта (на том же уровне)
-    rsc_files = list(script_dir.glob("*.rsc"))
+    # Ищем .rsc файлы в папке RazrabNasos
+    rsc_files = list(razrab_nasos_dir.glob("*.rsc"))
     
     project_modules = []
     for file_path in rsc_files:
@@ -106,7 +109,7 @@ def auto_process_project():
             project_modules.append(file_path)
     
     if not project_modules:
-        return [(False, "Модули проекта Nasos-*.rsc не найдены на том же уровне", 0, 0, 0)]
+        return [(False, "Модули проекта Nasos-*.rsc не найдены в папке RazrabNasos/", 0, 0, 0)]
     
     results = []
     for module_path in project_modules:
@@ -145,7 +148,7 @@ def run_auto_compact():
     print("   4. Добавление ; если нет и строка не заканчивается на \\r\\")
     print("   5. Сохранение строк с \\r\\ без изменений")
     print()
-    print("📁 Создание компактных версий в папке CodeNasos/")
+    print("📁 Исходники: RazrabNasos/ → Компактные версии: CodeNasos/")
     print("-" * 80)
     
     results = auto_process_project()
