@@ -211,3 +211,41 @@
 - Исключения синхронизации: только конфиденциальные переменные (BotToken, ChatId)
 - MikroTik загружает код из `Nasos-Init.rsc` (рабочий файл)
 - При редактировании template файла - ВСЕГДА проверить необходимость обновления рабочего файла 
+
+## РАБОТА С SSH-КЛЮЧАМИ
+
+### ГЕНЕРАЦИЯ И УПРАВЛЕНИЕ КЛЮЧАМИ
+- Использовать `/ip ssh export-host-key` для генерации ключей
+- Проверять наличие старых ключей перед генерацией
+- Очищать старые файлы перед созданием новых
+- Учитывать разные форматы публичных ключей:
+  - `.pem.pub` в RouterOS 7.12.1
+  - `_pub.pem` в RouterOS 7.19.1
+
+### СТАНДАРТИЗАЦИЯ ИМЕН ФАЙЛОВ
+- Приватный ключ: `test-universal_final.pem`
+- Публичный ключ: `test-universal_final_pub.pem`
+- Использовать стандартные имена для совместимости
+
+### ОБРАБОТКА ФАЙЛОВ
+```routeros
+# Очистка старых файлов
+:foreach f in=[/file find name~"test-universal"] do={
+    /file remove $f
+}
+
+# Генерация ключей
+/ip ssh export-host-key key-file-prefix=test-universal
+:delay 3
+
+# Анализ и копирование файлов
+:foreach f in=[/file find name~"test-universal"] do={
+    :local fname [/file get $f name]
+    :if ($fname ~ "_rsa\\.pem\$") do={ 
+        /file add name="test-universal_final.pem" contents=[/file get $fname contents]
+    }
+    :if ($fname ~ "_rsa\\.pem\\.pub\$" || $fname ~ "_rsa_pub\\.pem\$") do={ 
+        /file add name="test-universal_final_pub.pem" contents=[/file get $fname contents]
+    }
+}
+``` 

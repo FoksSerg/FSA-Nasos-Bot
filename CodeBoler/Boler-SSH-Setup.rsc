@@ -53,8 +53,18 @@
 }
 /system script add name="Boler-SSH-Test" source={
 :global BolerTestVar;
+:set BolerTestVar ("Я Бойлер " . [/system clock get time]);
 :log info ("BOLER-SSH-TEST: BolerTestVar=" . $BolerTestVar);
 :local sshResult ([/system ssh-exec address=10.10.55.1 user=Nasos command=":put \$NasosTestVar" as-value]->"output");
 :log info ("BOLER-SSH-TEST: NasosTestVar с насоса: " . $sshResult);
+}
+:log info "BOLER-SSH: Импортируем приватный ключ";
+/user ssh-keys private import private-key-file=boler_rsa.pem user=Nasos;
+:delay 1;
+:local importedKeys [/user ssh-keys private find user="Nasos"];
+:if ([:len $importedKeys] > 0) do={
+:log info "BOLER-SSH: Приватный ключ успешно импортирован и назначен пользователю Nasos";
+} else={
+:log error "BOLER-SSH: Ошибка импорта приватного ключа";
 }
 :log info "BOLER-SSH-SETUP: Завершено успешно";

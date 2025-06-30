@@ -53,8 +53,18 @@
 }
 /system script add name="Nasos-SSH-Test" source={
 :global NasosTestVar;
+:set NasosTestVar ("Я Насос " . [/system clock get time]);
 :log info ("NASOS-SSH-TEST: NasosTestVar=" . $NasosTestVar);
 :local sshResult ([/system ssh-exec address=10.10.44.1 user=Nasos command=":put \$BolerTestVar" as-value]->"output");
 :log info ("NASOS-SSH-TEST: BolerTestVar с бойлера: " . $sshResult);
+}
+:log info "NASOS-SSH: Импортируем приватный ключ";
+/user ssh-keys private import private-key-file=nasos_rsa.pem user=Nasos;
+:delay 1;
+:local importedKeys [/user ssh-keys private find user="Nasos"];
+:if ([:len $importedKeys] > 0) do={
+:log info "NASOS-SSH: Приватный ключ успешно импортирован и назначен пользователю Nasos";
+} else={
+:log error "NASOS-SSH: Ошибка импорта приватного ключа";
 }
 :log info "NASOS-SSH-SETUP: Завершено успешно";
