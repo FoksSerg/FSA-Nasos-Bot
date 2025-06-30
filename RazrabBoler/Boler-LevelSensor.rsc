@@ -47,8 +47,8 @@
         :local workText "ОШИБКА"
         :local criticalText "ОШИБКА"
         :local reliableText "Недостоверно"
-        :if ($workResult = "reached") do={ :set workText "ДОСТИГНУТ" } else={ :if ($workResult = "not-reached") do={ :set workText "НЕ ДОСТИГНУТ" } }
-        :if ($criticalResult = "reached") do={ :set criticalText "ДОСТИГНУТ" } else={ :if ($criticalResult = "not-reached") do={ :set criticalText "НЕ ДОСТИГНУТ" } }
+        :if ($workResult = "reached") do={ :set workText "НОРМА" } else={ :if ($workResult = "not-reached") do={ :set workText "НЕ ДОСТИГНУТ" } }
+        :if ($criticalResult = "reached") do={ :set criticalText "АВАРИЯ ПЕРЕЛИВ" } else={ :if ($criticalResult = "not-reached") do={ :set criticalText "НОРМА" } }
         :if ($reliable) do={ :set reliableText "Достоверно" }
 
         :log info ("BOLER-SENSOR: Рабочий=" . $workText . ", Критический=" . $criticalText . ", " . $reliableText)

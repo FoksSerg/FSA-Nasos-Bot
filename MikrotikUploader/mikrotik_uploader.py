@@ -685,7 +685,7 @@ class MikrotikUploader:
                 '/system/script/add',
                 f'=name={script_name}',
                 f'=source={content}',
-                '=policy=read,write,policy,test'
+                '=policy=read,write,policy,test,sensitive,ftp,reboot,password,sniff,romon'
             ])
             
             # Читаем все ответы до !done
@@ -814,7 +814,7 @@ class MikrotikUploader:
                     '/system/script/add',
                     f'=name={temp_script_name}',
                     f'=source={part_content}',
-                    '=policy=read,write,policy,test'
+                    '=policy=read,write,policy,test,sensitive,ftp,reboot,password,sniff,romon'
                 ])
                 
                 # Ожидание подтверждения загрузки
@@ -872,7 +872,7 @@ class MikrotikUploader:
             combine_script_code += f"""
 # === СОЗДАНИЕ ФИНАЛЬНОГО СКРИПТА ===
 :log info "Создаем финальный скрипт: {script_name}"
-/system script add name="{script_name}" source=$finalContent policy=read,write,policy,test
+/system script add name="{script_name}" source=$finalContent policy=read,write,policy,test,sensitive,ftp,reboot,password,sniff,romon
 :log info "Финальный скрипт {script_name} создан успешно"
 
 # === ОЧИСТКА ВРЕМЕННЫХ ФАЙЛОВ ===
@@ -909,7 +909,7 @@ class MikrotikUploader:
                 '/system/script/add',
                 f'=name={combine_script_name}',
                 f'=source={combine_script_code}',
-                '=policy=read,write,policy,test'
+                '=policy=read,write,policy,test,sensitive,ftp,reboot,password,sniff,romon'
             ])
             
             # Ожидание подтверждения
@@ -967,7 +967,7 @@ class MikrotikUploader:
                 f'=on-event={scheduler_command}',
                 f'=start-time={execution_time}',
                 '=interval=0s',  # Однократное выполнение
-                '=policy=read,write,policy,test'
+                '=policy=read,write,policy,test,sensitive,ftp,reboot,password,sniff,romon'
             ])
             
             # Ожидание подтверждения создания планировщика
